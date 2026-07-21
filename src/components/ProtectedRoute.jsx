@@ -2,7 +2,7 @@ import { Navigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 
 export default function ProtectedRoute({ children, requireOwner = false }) {
-  const { session, profile, loading } = useAuth();
+  const { session, profile, loading, aal } = useAuth();
 
   if (loading)
     return (
@@ -13,6 +13,11 @@ export default function ProtectedRoute({ children, requireOwner = false }) {
   if (!session) return <Navigate to="/login" replace />;
   if (!session.user.email_confirmed_at)
     return <Navigate to="/verify-email" replace />;
+
+  // MFA enrolled but this session hasn't completed the second factor yet
+  if (aal.nextLevel === "aal2" && aal.currentLevel !== aal.nextLevel)
+    return <Navigate to="/mfa-verify" replace />;
+
   if (requireOwner && profile?.role !== "owner")
     return <Navigate to="/" replace />;
 

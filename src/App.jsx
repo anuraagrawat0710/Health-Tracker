@@ -4,6 +4,8 @@ import ProtectedRoute from "./components/ProtectedRoute";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
 import VerifyEmail from "./pages/VerifyEmail";
+import MfaVerify from "./pages/MfaVerify";
+import MfaSetup from "./pages/MfaSetup";
 import UserDashboard from "./pages/UserDashboard";
 import OwnerDashboard from "./pages/OwnerDashboard";
 
@@ -21,6 +23,15 @@ export default function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
           <Route path="/verify-email" element={<VerifyEmail />} />
+          <Route path="/mfa-verify" element={<MfaVerify />} />
+          <Route
+            path="/security"
+            element={
+              <ProtectedRoute>
+                <MfaSetup />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/"
             element={

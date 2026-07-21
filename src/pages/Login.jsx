@@ -36,7 +36,7 @@ export default function Login() {
     e.preventDefault();
     setError("");
     setBusy(true);
-    const { error } = await signIn(email, password);
+    const { error, aal } = await signIn(email, password);
     setBusy(false);
 
     if (error) {
@@ -55,6 +55,13 @@ export default function Login() {
       }
       return;
     }
+
+    // account has a second factor enrolled and this session hasn't cleared it yet
+    if (aal?.nextLevel === "aal2" && aal.currentLevel !== aal.nextLevel) {
+      navigate("/mfa-verify");
+      return;
+    }
+
     navigate("/");
   }
 

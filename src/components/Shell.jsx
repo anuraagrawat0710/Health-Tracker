@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./Shell.css";
 
@@ -17,6 +18,9 @@ export default function Shell({ children }) {
               {profile?.role === "owner" ? "Owner" : "Employee"}
             </span>
           </div>
+          <Link to="/security" className="shell-signout">
+            Security
+          </Link>
           <button className="shell-signout" onClick={signOut}>
             Sign out
           </button>

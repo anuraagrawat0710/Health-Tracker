@@ -1,0 +1,32 @@
+.mfa-card {
+  padding: 24px;
+  max-width: 480px;
+}
+.mfa-qr {
+  display: block;
+  margin: 16px 0;
+  width: 200px;
+  height: 200px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+}
+.mfa-secret {
+  font-size: 12px;
+  color: var(--muted);
+}
+.mfa-secret code {
+  font-family: var(--font-mono);
+  background: var(--bg);
+  padding: 2px 6px;
+  border-radius: 5px;
+}
+.mfa-factor-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--line);
+}
+.mfa-factor-row:last-child {
+  border-bottom: none;
+}
