@@ -394,3 +394,10 @@
 .detail-label {
   color: var(--ink-soft);
 }
+
+/* Add this block to dashboard.css — reuses the existing .msg-bar styling
+   but with red instead of green for validation errors. */
+.msg-bar-error {
+  background: var(--risk-soft);
+  color: var(--risk);
+}

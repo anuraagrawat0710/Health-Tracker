@@ -22,6 +22,39 @@ const monthISO = () => {
 const toMonthInput = (isoDate) => isoDate.slice(0, 7);
 const fromMonthInput = (yyyyMm) => `${yyyyMm}-01`;
 
+// Server-side CHECK constraints (security-hardening.sql) enforce these same
+// bounds — this is just so the user gets a clear message instead of a raw
+// database error or a silently failed save.
+const DAILY_BOUNDS = {
+  steps: { min: 0, max: 100000, label: "Steps" },
+  exercise_minutes: { min: 0, max: 1440, label: "Exercise minutes" },
+  water_l: { min: 0, max: 20, label: "Water (L)" },
+  sleep_hours: { min: 0, max: 24, label: "Sleep (hrs)" },
+};
+const MONTHLY_BOUNDS = {
+  bmi: { min: 5, max: 100, label: "BMI" },
+  systolic_bp: { min: 40, max: 300, label: "Systolic BP" },
+  diastolic_bp: { min: 20, max: 200, label: "Diastolic BP" },
+  sugar: { min: 20, max: 600, label: "Sugar" },
+  cholesterol: { min: 50, max: 500, label: "Cholesterol" },
+};
+
+function validateBounds(form, bounds, { allowEmpty }) {
+  for (const key of Object.keys(bounds)) {
+    const raw = form[key];
+    if (raw === "" || raw == null) {
+      if (allowEmpty) continue;
+      return `${bounds[key].label} is required.`;
+    }
+    const num = Number(raw);
+    if (Number.isNaN(num)) return `${bounds[key].label} must be a number.`;
+    const { min, max, label } = bounds[key];
+    if (num < min || num > max)
+      return `${label} must be between ${min} and ${max}.`;
+  }
+  return null;
+}
+
 export default function UserDashboard() {
   const { profile } = useAuth();
 
@@ -51,6 +84,7 @@ export default function UserDashboard() {
   const [range, setRange] = useState("week");
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+  const [msgIsError, setMsgIsError] = useState(false);
 
   async function loadDaily(date) {
     const { data } = await supabase
@@ -144,8 +178,19 @@ export default function UserDashboard() {
 
   async function saveDaily(e) {
     e.preventDefault();
-    setSaving(true);
     setMsg("");
+    setMsgIsError(false);
+
+    const boundsError = validateBounds(dailyForm, DAILY_BOUNDS, {
+      allowEmpty: false,
+    });
+    if (boundsError) {
+      setMsg(boundsError);
+      setMsgIsError(true);
+      return;
+    }
+
+    setSaving(true);
     const payload = {
       user_id: profile.id,
       log_date: selectedDate,
@@ -158,6 +203,7 @@ export default function UserDashboard() {
       .from("daily_logs")
       .upsert(payload, { onConflict: "user_id,log_date" });
     setSaving(false);
+    setMsgIsError(!!error);
     setMsg(error ? error.message : `Saved log for ${selectedDate}.`);
     if (!error) {
       loadDaily(selectedDate);
@@ -167,8 +213,19 @@ export default function UserDashboard() {
 
   async function saveMonthly(e) {
     e.preventDefault();
-    setSaving(true);
     setMsg("");
+    setMsgIsError(false);
+
+    const boundsError = validateBounds(monthlyForm, MONTHLY_BOUNDS, {
+      allowEmpty: true,
+    });
+    if (boundsError) {
+      setMsg(boundsError);
+      setMsgIsError(true);
+      return;
+    }
+
+    setSaving(true);
     const payload = {
       user_id: profile.id,
       log_month: fromMonthInput(selectedMonth),
@@ -189,6 +246,7 @@ export default function UserDashboard() {
       .from("monthly_logs")
       .upsert(payload, { onConflict: "user_id,log_month" });
     setSaving(false);
+    setMsgIsError(!!error);
     setMsg(error ? error.message : `Saved checkup for ${selectedMonth}.`);
     if (!error) loadMonthly(fromMonthInput(selectedMonth));
     if (!error) loadMonthlyHistory();
@@ -324,7 +382,8 @@ export default function UserDashboard() {
               Steps
               <input
                 type="number"
-                min="0"
+                min={DAILY_BOUNDS.steps.min}
+                max={DAILY_BOUNDS.steps.max}
                 value={dailyForm.steps}
                 onChange={(e) =>
                   setDailyForm({ ...dailyForm, steps: e.target.value })
@@ -335,7 +394,8 @@ export default function UserDashboard() {
               Exercise (min)
               <input
                 type="number"
-                min="0"
+                min={DAILY_BOUNDS.exercise_minutes.min}
+                max={DAILY_BOUNDS.exercise_minutes.max}
                 value={dailyForm.exercise_minutes}
                 onChange={(e) =>
                   setDailyForm({
@@ -349,7 +409,8 @@ export default function UserDashboard() {
               Water (L)
               <input
                 type="number"
-                min="0"
+                min={DAILY_BOUNDS.water_l.min}
+                max={DAILY_BOUNDS.water_l.max}
                 step="0.1"
                 value={dailyForm.water_l}
                 onChange={(e) =>
@@ -361,7 +422,8 @@ export default function UserDashboard() {
               Sleep (hrs)
               <input
                 type="number"
-                min="0"
+                min={DAILY_BOUNDS.sleep_hours.min}
+                max={DAILY_BOUNDS.sleep_hours.max}
                 step="0.1"
                 value={dailyForm.sleep_hours}
                 onChange={(e) =>
@@ -394,7 +456,8 @@ export default function UserDashboard() {
               BMI
               <input
                 type="number"
-                min="0"
+                min={MONTHLY_BOUNDS.bmi.min}
+                max={MONTHLY_BOUNDS.bmi.max}
                 step="0.1"
                 value={monthlyForm.bmi}
                 onChange={(e) =>
@@ -406,7 +469,8 @@ export default function UserDashboard() {
               Systolic BP
               <input
                 type="number"
-                min="0"
+                min={MONTHLY_BOUNDS.systolic_bp.min}
+                max={MONTHLY_BOUNDS.systolic_bp.max}
                 value={monthlyForm.systolic_bp}
                 onChange={(e) =>
                   setMonthlyForm({
@@ -420,7 +484,8 @@ export default function UserDashboard() {
               Diastolic BP
               <input
                 type="number"
-                min="0"
+                min={MONTHLY_BOUNDS.diastolic_bp.min}
+                max={MONTHLY_BOUNDS.diastolic_bp.max}
                 value={monthlyForm.diastolic_bp}
                 onChange={(e) =>
                   setMonthlyForm({
@@ -434,7 +499,8 @@ export default function UserDashboard() {
               Sugar
               <input
                 type="number"
-                min="0"
+                min={MONTHLY_BOUNDS.sugar.min}
+                max={MONTHLY_BOUNDS.sugar.max}
                 value={monthlyForm.sugar}
                 onChange={(e) =>
                   setMonthlyForm({ ...monthlyForm, sugar: e.target.value })
@@ -445,7 +511,8 @@ export default function UserDashboard() {
               Cholesterol
               <input
                 type="number"
-                min="0"
+                min={MONTHLY_BOUNDS.cholesterol.min}
+                max={MONTHLY_BOUNDS.cholesterol.max}
                 value={monthlyForm.cholesterol}
                 onChange={(e) =>
                   setMonthlyForm({
@@ -492,7 +559,11 @@ export default function UserDashboard() {
         </form>
       </div>
 
-      {msg && <div className="msg-bar">{msg}</div>}
+      {msg && (
+        <div className={msgIsError ? "msg-bar msg-bar-error" : "msg-bar"}>
+          {msg}
+        </div>
+      )}
 
       <div className="card chart-card">
         <div className="chart-head">
