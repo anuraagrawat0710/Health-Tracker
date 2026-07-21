@@ -32,21 +32,24 @@ const prevPeriod = (firstDay) => {
   return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
 };
 
-// Converts an array of flat objects into a CSV file and triggers a browser
-// download. Values containing a comma, quote, or newline get quoted and
-// any internal quotes are escaped, per standard CSV rules.
-function downloadCSV(filename, rows) {
-  if (!rows || rows.length === 0) return;
+// Turns an array of flat objects into CSV lines (header row + data rows).
+// Values containing a comma, quote, or newline get quoted and any internal
+// quotes are escaped, per standard CSV rules.
+function rowsToCSVLines(rows) {
+  if (!rows || rows.length === 0) return [];
   const headers = Object.keys(rows[0]);
   const escapeCell = (val) => {
     const str = val == null ? "" : String(val);
     return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
   };
-  const csv = [
+  return [
     headers.join(","),
     ...rows.map((row) => headers.map((h) => escapeCell(row[h])).join(",")),
-  ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  ];
+}
+
+function triggerCSVDownload(filename, csvText) {
+  const blob = new Blob([csvText], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -57,6 +60,25 @@ function downloadCSV(filename, rows) {
   URL.revokeObjectURL(url);
 }
 
+// Single-table CSV export — used for the employees overview table.
+function downloadCSV(filename, rows) {
+  const lines = rowsToCSVLines(rows);
+  if (lines.length === 0) return;
+  triggerCSVDownload(filename, lines.join("\n"));
+}
+
+// Combines multiple labeled tables into ONE CSV file, each preceded by a
+// title row and separated by a blank line. Used so a single employee
+// export always includes both daily logs and half-yearly checkups
+// together, rather than requiring two separate downloads.
+function downloadMultiSectionCSV(filename, sections) {
+  const blocks = sections
+    .filter((s) => s.rows && s.rows.length > 0)
+    .map((s) => [s.title, ...rowsToCSVLines(s.rows)].join("\n"));
+  if (blocks.length === 0) return;
+  triggerCSVDownload(filename, blocks.join("\n\n"));
+}
+
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -65,7 +87,10 @@ export default function OwnerDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
   const [detailPeriod, setDetailPeriod] = useState(currentPeriod());
-  const [exporting, setExporting] = useState(null); // 'employees' | 'daily' | 'checkup' | null
+  const [exporting, setExporting] = useState(false);
+  const [exportMode, setExportMode] = useState("full"); // 'full' | 'range'
+  const [exportFrom, setExportFrom] = useState("");
+  const [exportTo, setExportTo] = useState(todayISO());
 
   useEffect(() => {
     async function load() {
@@ -135,7 +160,6 @@ export default function OwnerDashboard() {
   // Exports the currently filtered/searched employee overview table as a
   // single CSV — same rows the owner is currently looking at.
   function exportEmployeesCSV() {
-    setExporting("employees");
     const data = filtered.map((r) => ({
       name: r.full_name || "",
       email: r.email,
@@ -145,51 +169,63 @@ export default function OwnerDashboard() {
       risk_category: r.risk ?? "",
     }));
     downloadCSV(`employees-overview-${todayISO()}.csv`, data);
-    setExporting(null);
   }
 
-  // Exports one employee's full daily log history (every day they've ever
-  // logged), not just the currently selected date.
-  async function exportDailyHistory(profile) {
-    setExporting("daily");
-    const { data, error } = await supabase
+  // Exports one employee's daily logs AND half-yearly checkups together in
+  // a single CSV, either across their full history or restricted to a
+  // chosen date range (checkups are included if their period overlaps the
+  // range at all, since a checkup period is wider than a single day).
+  async function exportEmployeeHistory(profile) {
+    setExporting(true);
+
+    let dailyQuery = supabase
       .from("daily_logs")
       .select(
         "log_date, steps, exercise_minutes, water_l, sleep_hours, daily_score",
       )
       .eq("user_id", profile.id)
       .order("log_date", { ascending: true });
-    setExporting(null);
-    if (error || !data?.length) return;
-    const safeName = (profile.full_name || profile.email).replace(
-      /[^\w-]+/g,
-      "_",
-    );
-    downloadCSV(`${safeName}-daily-logs.csv`, data);
-  }
-
-  // Exports one employee's full half-yearly checkup history, not just the
-  // currently selected period.
-  async function exportCheckupHistory(profile) {
-    setExporting("checkup");
-    const { data, error } = await supabase
+    let monthlyQuery = supabase
       .from("monthly_logs")
       .select(
         "log_month, bmi, systolic_bp, diastolic_bp, sugar, cholesterol, wellness_activity, health_check",
       )
       .eq("user_id", profile.id)
       .order("log_month", { ascending: true });
-    setExporting(null);
-    if (error || !data?.length) return;
+
+    const useRange = exportMode === "range" && exportFrom && exportTo;
+    if (useRange) {
+      dailyQuery = dailyQuery
+        .gte("log_date", exportFrom)
+        .lte("log_date", exportTo);
+      monthlyQuery = monthlyQuery
+        .gte("log_month", periodStartFromDate(exportFrom))
+        .lte("log_month", periodStartFromDate(exportTo));
+    }
+
+    const [
+      { data: daily, error: dailyErr },
+      { data: monthly, error: monthlyErr },
+    ] = await Promise.all([dailyQuery, monthlyQuery]);
+    setExporting(false);
+    if (dailyErr || monthlyErr) return;
+
     const safeName = (profile.full_name || profile.email).replace(
       /[^\w-]+/g,
       "_",
     );
-    const withLabels = data.map((row) => ({
+    const rangeTag = useRange
+      ? `_${exportFrom}_to_${exportTo}`
+      : "_full-history";
+    const checkupRows = (monthly || []).map((row) => ({
       period: periodLabel(row.log_month),
       ...row,
     }));
-    downloadCSV(`${safeName}-checkups.csv`, withLabels);
+
+    downloadMultiSectionCSV(`${safeName}${rangeTag}.csv`, [
+      { title: "Daily Logs", rows: daily || [] },
+      { title: "Half-Yearly Checkups", rows: checkupRows },
+    ]);
   }
 
   // Fetch daily log for the currently selected date, for the employee in detail view.
@@ -227,6 +263,9 @@ export default function OwnerDashboard() {
     const initPeriod = currentPeriod();
     setDetailDate(initDate);
     setDetailPeriod(initPeriod);
+    setExportMode("full");
+    setExportFrom("");
+    setExportTo(todayISO());
     setDetailLoading(true);
     setDetail({ profile, daily: null, monthly: null, summary: null });
 
@@ -324,9 +363,9 @@ export default function OwnerDashboard() {
             type="button"
             className="view-btn"
             onClick={exportEmployeesCSV}
-            disabled={filtered.length === 0 || exporting === "employees"}
+            disabled={filtered.length === 0}
           >
-            {exporting === "employees" ? "Exporting…" : "Export CSV"}
+            Export CSV
           </button>
         </div>
 
@@ -408,6 +447,92 @@ export default function OwnerDashboard() {
             ) : (
               <div className="modal-body">
                 <div className="modal-section">
+                  <h4>Export history</h4>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="exportMode"
+                        checked={exportMode === "full"}
+                        onChange={() => setExportMode("full")}
+                      />
+                      Full history
+                    </label>
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 4,
+                        fontSize: 13,
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="exportMode"
+                        checked={exportMode === "range"}
+                        onChange={() => setExportMode("range")}
+                      />
+                      Date range
+                    </label>
+                    {exportMode === "range" && (
+                      <>
+                        <input
+                          type="date"
+                          className="date-picker"
+                          value={exportFrom}
+                          max={exportTo || todayISO()}
+                          onChange={(e) => setExportFrom(e.target.value)}
+                        />
+                        <span style={{ fontSize: 13 }}>to</span>
+                        <input
+                          type="date"
+                          className="date-picker"
+                          value={exportTo}
+                          min={exportFrom || undefined}
+                          max={todayISO()}
+                          onChange={(e) => setExportTo(e.target.value)}
+                        />
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="today-btn"
+                      disabled={
+                        exporting ||
+                        (exportMode === "range" && (!exportFrom || !exportTo))
+                      }
+                      onClick={() => exportEmployeeHistory(detail.profile)}
+                    >
+                      {exporting ? "Exporting…" : "Download CSV"}
+                    </button>
+                  </div>
+                  <p
+                    style={{
+                      fontSize: 12,
+                      color: "var(--muted)",
+                      marginTop: 6,
+                    }}
+                  >
+                    Includes both daily logs and half-yearly checkups in one
+                    file.
+                  </p>
+                </div>
+
+                <div className="modal-section">
                   <h4>
                     Daily log
                     <input
@@ -428,15 +553,6 @@ export default function OwnerDashboard() {
                         Today
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="today-btn"
-                      style={{ marginLeft: 8 }}
-                      disabled={exporting === "daily"}
-                      onClick={() => exportDailyHistory(detail.profile)}
-                    >
-                      {exporting === "daily" ? "Exporting…" : "Export CSV"}
-                    </button>
                   </h4>
                   {detail.daily ? (
                     <div className="detail-grid">
@@ -513,15 +629,6 @@ export default function OwnerDashboard() {
                         This period
                       </button>
                     )}
-                    <button
-                      type="button"
-                      className="today-btn"
-                      style={{ marginLeft: 8 }}
-                      disabled={exporting === "checkup"}
-                      onClick={() => exportCheckupHistory(detail.profile)}
-                    >
-                      {exporting === "checkup" ? "Exporting…" : "Export CSV"}
-                    </button>
                   </h4>
                   {detail.monthly ? (
                     <div className="detail-grid">
