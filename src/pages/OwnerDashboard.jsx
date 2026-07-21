@@ -32,6 +32,31 @@ const prevPeriod = (firstDay) => {
   return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
 };
 
+// Converts an array of flat objects into a CSV file and triggers a browser
+// download. Values containing a comma, quote, or newline get quoted and
+// any internal quotes are escaped, per standard CSV rules.
+function downloadCSV(filename, rows) {
+  if (!rows || rows.length === 0) return;
+  const headers = Object.keys(rows[0]);
+  const escapeCell = (val) => {
+    const str = val == null ? "" : String(val);
+    return /[",\n]/.test(str) ? `"${str.replace(/"/g, '""')}"` : str;
+  };
+  const csv = [
+    headers.join(","),
+    ...rows.map((row) => headers.map((h) => escapeCell(row[h])).join(",")),
+  ].join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +65,7 @@ export default function OwnerDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
   const [detailPeriod, setDetailPeriod] = useState(currentPeriod());
+  const [exporting, setExporting] = useState(null); // 'employees' | 'daily' | 'checkup' | null
 
   useEffect(() => {
     async function load() {
@@ -105,6 +131,66 @@ export default function OwnerDashboard() {
       : null;
     return { total: rows.length, loggedToday, atRisk, avg };
   }, [rows]);
+
+  // Exports the currently filtered/searched employee overview table as a
+  // single CSV — same rows the owner is currently looking at.
+  function exportEmployeesCSV() {
+    setExporting("employees");
+    const data = filtered.map((r) => ({
+      name: r.full_name || "",
+      email: r.email,
+      department: r.department || "",
+      today_score: r.today_score ?? "",
+      checkup_score: r.monthly_score ?? "",
+      risk_category: r.risk ?? "",
+    }));
+    downloadCSV(`employees-overview-${todayISO()}.csv`, data);
+    setExporting(null);
+  }
+
+  // Exports one employee's full daily log history (every day they've ever
+  // logged), not just the currently selected date.
+  async function exportDailyHistory(profile) {
+    setExporting("daily");
+    const { data, error } = await supabase
+      .from("daily_logs")
+      .select(
+        "log_date, steps, exercise_minutes, water_l, sleep_hours, daily_score",
+      )
+      .eq("user_id", profile.id)
+      .order("log_date", { ascending: true });
+    setExporting(null);
+    if (error || !data?.length) return;
+    const safeName = (profile.full_name || profile.email).replace(
+      /[^\w-]+/g,
+      "_",
+    );
+    downloadCSV(`${safeName}-daily-logs.csv`, data);
+  }
+
+  // Exports one employee's full half-yearly checkup history, not just the
+  // currently selected period.
+  async function exportCheckupHistory(profile) {
+    setExporting("checkup");
+    const { data, error } = await supabase
+      .from("monthly_logs")
+      .select(
+        "log_month, bmi, systolic_bp, diastolic_bp, sugar, cholesterol, wellness_activity, health_check",
+      )
+      .eq("user_id", profile.id)
+      .order("log_month", { ascending: true });
+    setExporting(null);
+    if (error || !data?.length) return;
+    const safeName = (profile.full_name || profile.email).replace(
+      /[^\w-]+/g,
+      "_",
+    );
+    const withLabels = data.map((row) => ({
+      period: periodLabel(row.log_month),
+      ...row,
+    }));
+    downloadCSV(`${safeName}-checkups.csv`, withLabels);
+  }
 
   // Fetch daily log for the currently selected date, for the employee in detail view.
   async function loadDetailDaily(profileId, date) {
@@ -234,6 +320,14 @@ export default function OwnerDashboard() {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
+          <button
+            type="button"
+            className="view-btn"
+            onClick={exportEmployeesCSV}
+            disabled={filtered.length === 0 || exporting === "employees"}
+          >
+            {exporting === "employees" ? "Exporting…" : "Export CSV"}
+          </button>
         </div>
 
         {loading ? (
@@ -334,6 +428,15 @@ export default function OwnerDashboard() {
                         Today
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="today-btn"
+                      style={{ marginLeft: 8 }}
+                      disabled={exporting === "daily"}
+                      onClick={() => exportDailyHistory(detail.profile)}
+                    >
+                      {exporting === "daily" ? "Exporting…" : "Export CSV"}
+                    </button>
                   </h4>
                   {detail.daily ? (
                     <div className="detail-grid">
@@ -410,6 +513,15 @@ export default function OwnerDashboard() {
                         This period
                       </button>
                     )}
+                    <button
+                      type="button"
+                      className="today-btn"
+                      style={{ marginLeft: 8 }}
+                      disabled={exporting === "checkup"}
+                      onClick={() => exportCheckupHistory(detail.profile)}
+                    >
+                      {exporting === "checkup" ? "Exporting…" : "Export CSV"}
+                    </button>
                   </h4>
                   {detail.monthly ? (
                     <div className="detail-grid">
