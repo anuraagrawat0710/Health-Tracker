@@ -10,6 +10,11 @@ const monthISO = () => {
 };
 const toMonthInput = (isoDate) => isoDate.slice(0, 7);
 const fromMonthInput = (yyyyMm) => `${yyyyMm}-01`;
+// Guards against native <input type="month"> firing onChange with a
+// partial value while the user is still typing (e.g. "2026-0"), which
+// would otherwise produce an invalid log_month like "2026-0-01" and a
+// 400 from Supabase.
+const isCompleteMonthInput = (val) => /^\d{4}-\d{2}$/.test(val);
 
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
@@ -167,6 +172,7 @@ export default function OwnerDashboard() {
 
   function onDetailMonthChange(e) {
     const month = e.target.value;
+    if (!isCompleteMonthInput(month)) return; // ignore partial typing, e.g. "2026-0"
     setDetailMonth(month);
     if (detail?.profile)
       loadDetailMonthly(detail.profile.id, fromMonthInput(month));

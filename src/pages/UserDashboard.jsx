@@ -21,6 +21,11 @@ const monthISO = () => {
 };
 const toMonthInput = (isoDate) => isoDate.slice(0, 7);
 const fromMonthInput = (yyyyMm) => `${yyyyMm}-01`;
+// Guards against native <input type="month"> firing onChange with a
+// partial value while the user is still typing (e.g. "2026-0"), which
+// would otherwise produce an invalid log_month like "2026-0-01" and a
+// 400 from Supabase.
+const isCompleteMonthInput = (val) => /^\d{4}-\d{2}$/.test(val);
 
 // Server-side CHECK constraints (security-hardening.sql) enforce these same
 // bounds — this is just so the user gets a clear message instead of a raw
@@ -300,6 +305,12 @@ export default function UserDashboard() {
   const isPastDaily = selectedDate !== todayISO();
   const isPastMonthly = selectedMonth !== toMonthInput(monthISO());
 
+  function handleMonthChange(e) {
+    const val = e.target.value;
+    if (!isCompleteMonthInput(val)) return; // ignore partial typing, e.g. "2026-0"
+    setSelectedMonth(val);
+  }
+
   return (
     <Shell>
       <div className="dash-header">
@@ -447,7 +458,7 @@ export default function UserDashboard() {
               className="date-picker"
               value={selectedMonth}
               max={toMonthInput(monthISO())}
-              onChange={(e) => setSelectedMonth(e.target.value)}
+              onChange={handleMonthChange}
             />
             {isPastMonthly && <span className="backfill-tag">Backfilling</span>}
           </h3>
