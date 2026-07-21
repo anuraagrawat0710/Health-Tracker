@@ -99,7 +99,7 @@ export default function OwnerDashboard() {
         await Promise.all([
           supabase
             .from("profiles")
-            .select("id, full_name, email, department, role")
+            .select("id, full_name, email, role")
             .eq("role", "user"),
           supabase
             .from("daily_logs")
@@ -136,7 +136,6 @@ export default function OwnerDashboard() {
     return rows.filter(
       (r) =>
         (r.full_name || "").toLowerCase().includes(q) ||
-        (r.department || "").toLowerCase().includes(q) ||
         (r.email || "").toLowerCase().includes(q),
     );
   }, [rows, query]);
@@ -163,7 +162,6 @@ export default function OwnerDashboard() {
     const data = filtered.map((r) => ({
       name: r.full_name || "",
       email: r.email,
-      department: r.department || "",
       today_score: r.today_score ?? "",
       checkup_score: r.monthly_score ?? "",
       risk_category: r.risk ?? "",
@@ -355,7 +353,7 @@ export default function OwnerDashboard() {
           <h3>Employees</h3>
           <input
             className="search-input"
-            placeholder="Search name, department, email…"
+            placeholder="Search name, email…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -378,7 +376,6 @@ export default function OwnerDashboard() {
             <thead>
               <tr>
                 <th>Name</th>
-                <th>Department</th>
                 <th>Today's score</th>
                 <th>Checkup score</th>
                 <th>Risk</th>
@@ -392,7 +389,6 @@ export default function OwnerDashboard() {
                     <div className="emp-name">{r.full_name || "—"}</div>
                     <div className="emp-email">{r.email}</div>
                   </td>
-                  <td>{r.department || "—"}</td>
                   <td className="mono">
                     {r.today_score != null ? Math.round(r.today_score) : "—"}
                   </td>
@@ -430,12 +426,7 @@ export default function OwnerDashboard() {
             <div className="modal-head">
               <div>
                 <h3>{detail.profile.full_name || detail.profile.email}</h3>
-                <div className="emp-email">
-                  {detail.profile.email}{" "}
-                  {detail.profile.department
-                    ? `· ${detail.profile.department}`
-                    : ""}
-                </div>
+                <div className="emp-email">{detail.profile.email}</div>
               </div>
               <button className="modal-close" onClick={closeDetail}>
                 ×
