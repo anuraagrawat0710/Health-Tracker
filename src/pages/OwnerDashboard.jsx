@@ -4,17 +4,33 @@ import Shell from "../components/Shell";
 import "./dashboard.css";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const monthISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+// Health checkups now run twice a year on fixed calendar halves:
+// H1 = Jan–Jun, H2 = Jul–Dec. A period is identified by the ISO date of
+// its first day (e.g. "2026-01-01" or "2026-07-01") — this is exactly
+// what gets stored in log_month, so no database schema change is needed,
+// only fewer, wider periods.
+const periodStartFromDate = (isoDate) => {
+  const year = isoDate.slice(0, 4);
+  const month = Number(isoDate.slice(5, 7));
+  return month <= 6 ? `${year}-01-01` : `${year}-07-01`;
 };
-const toMonthInput = (isoDate) => isoDate.slice(0, 7);
-const fromMonthInput = (yyyyMm) => `${yyyyMm}-01`;
-// Guards against native <input type="month"> firing onChange with a
-// partial value while the user is still typing (e.g. "2026-0"), which
-// would otherwise produce an invalid log_month like "2026-0-01" and a
-// 400 from Supabase.
-const isCompleteMonthInput = (val) => /^\d{4}-\d{2}$/.test(val);
+const currentPeriod = () => periodStartFromDate(todayISO());
+const periodLabel = (firstDay) => {
+  const year = firstDay.slice(0, 4);
+  const half = firstDay.slice(5, 7);
+  return half === "01" ? `Jan–Jun ${year}` : `Jul–Dec ${year}`;
+};
+const nextPeriod = (firstDay) => {
+  const year = Number(firstDay.slice(0, 4));
+  const half = firstDay.slice(5, 7);
+  return half === "01" ? `${year}-07-01` : `${year + 1}-01-01`;
+};
+const prevPeriod = (firstDay) => {
+  const year = Number(firstDay.slice(0, 4));
+  const half = firstDay.slice(5, 7);
+  return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
+};
 
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
@@ -23,13 +39,7 @@ export default function OwnerDashboard() {
   const [detail, setDetail] = useState(null); // { profile, daily, monthly, summary } | null
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
-  const [detailMonth, setDetailMonth] = useState(toMonthInput(monthISO()));
-  // Separate "draft" state so the input can hold partial text like "2026-0"
-  // while typing, without snapping back. Only commits to detailMonth (and
-  // triggers the Supabase fetch) once the value is a complete YYYY-MM.
-  const [detailMonthDraft, setDetailMonthDraft] = useState(
-    toMonthInput(monthISO()),
-  );
+  const [detailPeriod, setDetailPeriod] = useState(currentPeriod());
 
   useEffect(() => {
     async function load() {
@@ -47,7 +57,7 @@ export default function OwnerDashboard() {
           supabase
             .from("monthly_summary")
             .select("user_id, monthly_score, risk_category")
-            .eq("log_month", monthISO()),
+            .eq("log_month", currentPeriod()),
         ]);
 
       const dailyMap = Object.fromEntries(
@@ -107,20 +117,20 @@ export default function OwnerDashboard() {
     setDetail((prev) => (prev ? { ...prev, daily: data } : prev));
   }
 
-  // Fetch monthly log + summary for the currently selected month, for the employee in detail view.
-  async function loadDetailMonthly(profileId, monthFirstDay) {
+  // Fetch checkup log + summary for the currently selected period, for the employee in detail view.
+  async function loadDetailMonthly(profileId, periodFirstDay) {
     const [{ data: monthly }, { data: summary }] = await Promise.all([
       supabase
         .from("monthly_logs")
         .select("*")
         .eq("user_id", profileId)
-        .eq("log_month", monthFirstDay)
+        .eq("log_month", periodFirstDay)
         .maybeSingle(),
       supabase
         .from("monthly_summary")
         .select("*")
         .eq("user_id", profileId)
-        .eq("log_month", monthFirstDay)
+        .eq("log_month", periodFirstDay)
         .maybeSingle(),
     ]);
     setDetail((prev) => (prev ? { ...prev, monthly, summary } : prev));
@@ -128,9 +138,9 @@ export default function OwnerDashboard() {
 
   async function openDetail(profile) {
     const initDate = todayISO();
-    const initMonth = toMonthInput(monthISO());
+    const initPeriod = currentPeriod();
     setDetailDate(initDate);
-    setDetailMonth(initMonth);
+    setDetailPeriod(initPeriod);
     setDetailLoading(true);
     setDetail({ profile, daily: null, monthly: null, summary: null });
 
@@ -146,13 +156,13 @@ export default function OwnerDashboard() {
           .from("monthly_logs")
           .select("*")
           .eq("user_id", profile.id)
-          .eq("log_month", fromMonthInput(initMonth))
+          .eq("log_month", initPeriod)
           .maybeSingle(),
         supabase
           .from("monthly_summary")
           .select("*")
           .eq("user_id", profile.id)
-          .eq("log_month", fromMonthInput(initMonth))
+          .eq("log_month", initPeriod)
           .maybeSingle(),
       ]);
     setDetail({ profile, daily, monthly, summary });
@@ -165,36 +175,24 @@ export default function OwnerDashboard() {
 
   function onDetailDateChange(e) {
     const date = e.target.value;
-    const month = toMonthInput(date);
+    const period = periodStartFromDate(date);
     setDetailDate(date);
     if (detail?.profile) {
       loadDetailDaily(detail.profile.id, date);
-      if (month !== detailMonth) {
-        setDetailMonth(month);
-        loadDetailMonthly(detail.profile.id, fromMonthInput(month));
+      if (period !== detailPeriod) {
+        setDetailPeriod(period);
+        loadDetailMonthly(detail.profile.id, period);
       }
     }
   }
 
-  function onDetailMonthChange(e) {
-    const month = e.target.value;
-    setDetailMonthDraft(month); // always reflect what's typed, so typing never gets blocked
-    if (isCompleteMonthInput(month)) {
-      setDetailMonth(month);
-      if (detail?.profile)
-        loadDetailMonthly(detail.profile.id, fromMonthInput(month));
-    }
+  function goToPeriod(period) {
+    setDetailPeriod(period);
+    if (detail?.profile) loadDetailMonthly(detail.profile.id, period);
   }
 
-  // Keep the draft text in sync whenever detailMonth changes from
-  // somewhere other than typing (e.g. opening a new employee's detail view,
-  // changing the date picker, or the "This month" button).
-  useEffect(() => {
-    setDetailMonthDraft(detailMonth);
-  }, [detailMonth]);
-
   const isPastDetailDate = detail && detailDate !== todayISO();
-  const isPastDetailMonth = detail && detailMonth !== toMonthInput(monthISO());
+  const isPastDetailPeriod = detail && detailPeriod !== currentPeriod();
 
   return (
     <Shell>
@@ -214,7 +212,7 @@ export default function OwnerDashboard() {
         </div>
         <div className="card stat-card">
           <span className="stat-num mono">{stats.avg ?? "—"}</span>
-          <span className="stat-label">Avg monthly score</span>
+          <span className="stat-label">Avg checkup score</span>
         </div>
         <div className="card stat-card">
           <span
@@ -249,7 +247,7 @@ export default function OwnerDashboard() {
                 <th>Name</th>
                 <th>Department</th>
                 <th>Today's score</th>
-                <th>Monthly score</th>
+                <th>Checkup score</th>
                 <th>Risk</th>
                 <th></th>
               </tr>
@@ -373,25 +371,43 @@ export default function OwnerDashboard() {
 
                 <div className="modal-section">
                   <h4>
-                    Monthly checkup
-                    <input
-                      type="month"
-                      className="date-picker"
-                      value={detailMonthDraft}
-                      max={toMonthInput(monthISO())}
-                      onChange={onDetailMonthChange}
-                    />
-                    {isPastDetailMonth && (
+                    Half-yearly checkup
+                    <span
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        marginLeft: 12,
+                      }}
+                    >
                       <button
                         type="button"
                         className="today-btn"
-                        onClick={() =>
-                          onDetailMonthChange({
-                            target: { value: toMonthInput(monthISO()) },
-                          })
-                        }
+                        aria-label="Previous period"
+                        onClick={() => goToPeriod(prevPeriod(detailPeriod))}
                       >
-                        This month
+                        ‹
+                      </button>
+                      <span style={{ fontWeight: 600, fontSize: 14 }}>
+                        {periodLabel(detailPeriod)}
+                      </span>
+                      <button
+                        type="button"
+                        className="today-btn"
+                        aria-label="Next period"
+                        disabled={detailPeriod === currentPeriod()}
+                        onClick={() => goToPeriod(nextPeriod(detailPeriod))}
+                      >
+                        ›
+                      </button>
+                    </span>
+                    {isPastDetailPeriod && (
+                      <button
+                        type="button"
+                        className="today-btn"
+                        onClick={() => goToPeriod(currentPeriod())}
+                      >
+                        This period
                       </button>
                     )}
                   </h4>
@@ -442,7 +458,7 @@ export default function OwnerDashboard() {
                     </div>
                   ) : (
                     <div className="empty-state">
-                      No checkup for {detailMonth}.
+                      No checkup for {periodLabel(detailPeriod)}.
                     </div>
                   )}
                 </div>
@@ -452,7 +468,7 @@ export default function OwnerDashboard() {
                     <h4>Combined</h4>
                     <div className="detail-grid">
                       <div>
-                        <span className="detail-label">Monthly score</span>
+                        <span className="detail-label">Checkup score</span>
                         <span className="mono">
                           {Math.round(detail.summary.monthly_score)}
                         </span>

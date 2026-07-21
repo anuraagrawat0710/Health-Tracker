@@ -15,17 +15,33 @@ import Shell from "../components/Shell";
 import "./dashboard.css";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
-const monthISO = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
+
+// Health checkups now run twice a year on fixed calendar halves:
+// H1 = Jan–Jun, H2 = Jul–Dec. A period is identified by the ISO date of
+// its first day (e.g. "2026-01-01" or "2026-07-01") — this is exactly
+// what gets stored in log_month, so no database schema change is needed,
+// only fewer, wider periods.
+const periodStartFromDate = (isoDate) => {
+  const year = isoDate.slice(0, 4);
+  const month = Number(isoDate.slice(5, 7));
+  return month <= 6 ? `${year}-01-01` : `${year}-07-01`;
 };
-const toMonthInput = (isoDate) => isoDate.slice(0, 7);
-const fromMonthInput = (yyyyMm) => `${yyyyMm}-01`;
-// Guards against native <input type="month"> firing onChange with a
-// partial value while the user is still typing (e.g. "2026-0"), which
-// would otherwise produce an invalid log_month like "2026-0-01" and a
-// 400 from Supabase.
-const isCompleteMonthInput = (val) => /^\d{4}-\d{2}$/.test(val);
+const currentPeriod = () => periodStartFromDate(todayISO());
+const periodLabel = (firstDay) => {
+  const year = firstDay.slice(0, 4);
+  const half = firstDay.slice(5, 7);
+  return half === "01" ? `Jan–Jun ${year}` : `Jul–Dec ${year}`;
+};
+const nextPeriod = (firstDay) => {
+  const year = Number(firstDay.slice(0, 4));
+  const half = firstDay.slice(5, 7);
+  return half === "01" ? `${year}-07-01` : `${year + 1}-01-01`;
+};
+const prevPeriod = (firstDay) => {
+  const year = Number(firstDay.slice(0, 4));
+  const half = firstDay.slice(5, 7);
+  return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
+};
 
 // Server-side CHECK constraints (security-hardening.sql) enforce these same
 // bounds — this is just so the user gets a clear message instead of a raw
@@ -64,11 +80,7 @@ export default function UserDashboard() {
   const { profile } = useAuth();
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
-  const [selectedMonth, setSelectedMonth] = useState(toMonthInput(monthISO()));
-  // Separate "draft" state so the input can hold partial text like "2026-0"
-  // while typing, without snapping back. Only commits to selectedMonth (and
-  // triggers the Supabase fetch) once the value is a complete YYYY-MM.
-  const [monthDraft, setMonthDraft] = useState(toMonthInput(monthISO()));
+  const [selectedPeriod, setSelectedPeriod] = useState(currentPeriod());
 
   const [dailyForm, setDailyForm] = useState({
     steps: "",
@@ -115,12 +127,12 @@ export default function UserDashboard() {
     );
   }
 
-  async function loadMonthly(monthFirstDay) {
+  async function loadMonthly(periodFirstDay) {
     const { data } = await supabase
       .from("monthly_logs")
       .select("*")
       .eq("user_id", profile.id)
-      .eq("log_month", monthFirstDay)
+      .eq("log_month", periodFirstDay)
       .maybeSingle();
     setMonthLog(data);
     setMonthlyForm(
@@ -148,7 +160,7 @@ export default function UserDashboard() {
       .from("monthly_summary")
       .select("*")
       .eq("user_id", profile.id)
-      .eq("log_month", monthFirstDay)
+      .eq("log_month", periodFirstDay)
       .maybeSingle();
     setSummary(sm);
   }
@@ -182,13 +194,8 @@ export default function UserDashboard() {
     if (profile) loadDaily(selectedDate);
   }, [profile, selectedDate]);
   useEffect(() => {
-    if (profile) loadMonthly(fromMonthInput(selectedMonth));
-  }, [profile, selectedMonth]);
-  // Keep the draft text in sync whenever selectedMonth changes from
-  // somewhere other than typing (e.g. the "Back to this month" button).
-  useEffect(() => {
-    setMonthDraft(selectedMonth);
-  }, [selectedMonth]);
+    if (profile) loadMonthly(selectedPeriod);
+  }, [profile, selectedPeriod]);
 
   async function saveDaily(e) {
     e.preventDefault();
@@ -242,7 +249,7 @@ export default function UserDashboard() {
     setSaving(true);
     const payload = {
       user_id: profile.id,
-      log_month: fromMonthInput(selectedMonth),
+      log_month: selectedPeriod,
       bmi: monthlyForm.bmi === "" ? null : Number(monthlyForm.bmi),
       systolic_bp:
         monthlyForm.systolic_bp === "" ? null : Number(monthlyForm.systolic_bp),
@@ -261,8 +268,12 @@ export default function UserDashboard() {
       .upsert(payload, { onConflict: "user_id,log_month" });
     setSaving(false);
     setMsgIsError(!!error);
-    setMsg(error ? error.message : `Saved checkup for ${selectedMonth}.`);
-    if (!error) loadMonthly(fromMonthInput(selectedMonth));
+    setMsg(
+      error
+        ? error.message
+        : `Saved checkup for ${periodLabel(selectedPeriod)}.`,
+    );
+    if (!error) loadMonthly(selectedPeriod);
     if (!error) loadMonthlyHistory();
   }
 
@@ -305,28 +316,22 @@ export default function UserDashboard() {
   const monthlyChartData = useMemo(
     () =>
       monthlyHistory.map((m) => ({
-        label: m.log_month.slice(0, 7),
+        label: periodLabel(m.log_month),
         score: Math.round(Number(m.monthly_score) * 10) / 10,
       })),
     [monthlyHistory],
   );
 
   const isPastDaily = selectedDate !== todayISO();
-  const isPastMonthly = selectedMonth !== toMonthInput(monthISO());
-
-  function handleMonthChange(e) {
-    const val = e.target.value;
-    setMonthDraft(val); // always reflect what's typed, so typing never gets blocked
-    if (isCompleteMonthInput(val)) setSelectedMonth(val); // only fetch once complete
-  }
+  const isPastPeriod = selectedPeriod !== currentPeriod();
 
   return (
     <Shell>
       <div className="dash-header">
         <h1>Your health tracker</h1>
         <p className="dash-sub">
-          Log today's numbers, your monthly checkup — or backfill a date you
-          missed.
+          Log today's numbers, your half-yearly checkup — or backfill a date or
+          period you missed.
         </p>
       </div>
 
@@ -353,9 +358,9 @@ export default function UserDashboard() {
             value={summary?.monthly_score}
             max={100}
             label={
-              isPastMonthly
-                ? `Score for ${selectedMonth}`
-                : "This month's score"
+              isPastPeriod
+                ? `Score for ${periodLabel(selectedPeriod)}`
+                : "This period's score"
             }
             color={
               summary?.risk_category === "Low Risk"
@@ -372,13 +377,13 @@ export default function UserDashboard() {
               {summary.risk_category}
             </span>
           )}
-          {isPastMonthly && (
+          {isPastPeriod && (
             <button
               type="button"
               className="today-btn"
-              onClick={() => setSelectedMonth(toMonthInput(monthISO()))}
+              onClick={() => setSelectedPeriod(currentPeriod())}
             >
-              Back to this month
+              Back to this period
             </button>
           )}
         </div>
@@ -461,15 +466,37 @@ export default function UserDashboard() {
 
         <form className="card form-card" onSubmit={saveMonthly}>
           <h3>
-            Monthly checkup
-            <input
-              type="month"
-              className="date-picker"
-              value={monthDraft}
-              max={toMonthInput(monthISO())}
-              onChange={handleMonthChange}
-            />
-            {isPastMonthly && <span className="backfill-tag">Backfilling</span>}
+            Half-yearly checkup
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                marginLeft: 12,
+              }}
+            >
+              <button
+                type="button"
+                className="today-btn"
+                aria-label="Previous period"
+                onClick={() => setSelectedPeriod(prevPeriod(selectedPeriod))}
+              >
+                ‹
+              </button>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>
+                {periodLabel(selectedPeriod)}
+              </span>
+              <button
+                type="button"
+                className="today-btn"
+                aria-label="Next period"
+                disabled={selectedPeriod === currentPeriod()}
+                onClick={() => setSelectedPeriod(nextPeriod(selectedPeriod))}
+              >
+                ›
+              </button>
+            </span>
+            {isPastPeriod && <span className="backfill-tag">Backfilling</span>}
           </h3>
           <div className="field-grid">
             <label>
@@ -573,8 +600,8 @@ export default function UserDashboard() {
           </div>
           <button className="save-btn" disabled={saving}>
             {monthLog
-              ? `Update checkup for ${selectedMonth}`
-              : `Save checkup for ${selectedMonth}`}
+              ? `Update checkup for ${periodLabel(selectedPeriod)}`
+              : `Save checkup for ${periodLabel(selectedPeriod)}`}
           </button>
         </form>
       </div>
@@ -625,10 +652,10 @@ export default function UserDashboard() {
       </div>
       <div className="card chart-card">
         <div className="chart-head">
-          <h3>Monthly checkup trend</h3>
+          <h3>Half-yearly checkup trend</h3>
         </div>
         {monthlyChartData.length === 0 ? (
-          <div className="empty-state">No monthly checkups saved yet.</div>
+          <div className="empty-state">No checkups saved yet.</div>
         ) : (
           <ResponsiveContainer width="100%" height={220}>
             <LineChart data={monthlyChartData}>
