@@ -65,6 +65,10 @@ export default function UserDashboard() {
 
   const [selectedDate, setSelectedDate] = useState(todayISO());
   const [selectedMonth, setSelectedMonth] = useState(toMonthInput(monthISO()));
+  // Separate "draft" state so the input can hold partial text like "2026-0"
+  // while typing, without snapping back. Only commits to selectedMonth (and
+  // triggers the Supabase fetch) once the value is a complete YYYY-MM.
+  const [monthDraft, setMonthDraft] = useState(toMonthInput(monthISO()));
 
   const [dailyForm, setDailyForm] = useState({
     steps: "",
@@ -180,6 +184,11 @@ export default function UserDashboard() {
   useEffect(() => {
     if (profile) loadMonthly(fromMonthInput(selectedMonth));
   }, [profile, selectedMonth]);
+  // Keep the draft text in sync whenever selectedMonth changes from
+  // somewhere other than typing (e.g. the "Back to this month" button).
+  useEffect(() => {
+    setMonthDraft(selectedMonth);
+  }, [selectedMonth]);
 
   async function saveDaily(e) {
     e.preventDefault();
@@ -307,8 +316,8 @@ export default function UserDashboard() {
 
   function handleMonthChange(e) {
     const val = e.target.value;
-    if (!isCompleteMonthInput(val)) return; // ignore partial typing, e.g. "2026-0"
-    setSelectedMonth(val);
+    setMonthDraft(val); // always reflect what's typed, so typing never gets blocked
+    if (isCompleteMonthInput(val)) setSelectedMonth(val); // only fetch once complete
   }
 
   return (
@@ -456,7 +465,7 @@ export default function UserDashboard() {
             <input
               type="month"
               className="date-picker"
-              value={selectedMonth}
+              value={monthDraft}
               max={toMonthInput(monthISO())}
               onChange={handleMonthChange}
             />

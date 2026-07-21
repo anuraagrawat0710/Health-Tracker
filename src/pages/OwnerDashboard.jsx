@@ -24,6 +24,12 @@ export default function OwnerDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
   const [detailMonth, setDetailMonth] = useState(toMonthInput(monthISO()));
+  // Separate "draft" state so the input can hold partial text like "2026-0"
+  // while typing, without snapping back. Only commits to detailMonth (and
+  // triggers the Supabase fetch) once the value is a complete YYYY-MM.
+  const [detailMonthDraft, setDetailMonthDraft] = useState(
+    toMonthInput(monthISO()),
+  );
 
   useEffect(() => {
     async function load() {
@@ -172,11 +178,20 @@ export default function OwnerDashboard() {
 
   function onDetailMonthChange(e) {
     const month = e.target.value;
-    if (!isCompleteMonthInput(month)) return; // ignore partial typing, e.g. "2026-0"
-    setDetailMonth(month);
-    if (detail?.profile)
-      loadDetailMonthly(detail.profile.id, fromMonthInput(month));
+    setDetailMonthDraft(month); // always reflect what's typed, so typing never gets blocked
+    if (isCompleteMonthInput(month)) {
+      setDetailMonth(month);
+      if (detail?.profile)
+        loadDetailMonthly(detail.profile.id, fromMonthInput(month));
+    }
   }
+
+  // Keep the draft text in sync whenever detailMonth changes from
+  // somewhere other than typing (e.g. opening a new employee's detail view,
+  // changing the date picker, or the "This month" button).
+  useEffect(() => {
+    setDetailMonthDraft(detailMonth);
+  }, [detailMonth]);
 
   const isPastDetailDate = detail && detailDate !== todayISO();
   const isPastDetailMonth = detail && detailMonth !== toMonthInput(monthISO());
@@ -362,7 +377,7 @@ export default function OwnerDashboard() {
                     <input
                       type="month"
                       className="date-picker"
-                      value={detailMonth}
+                      value={detailMonthDraft}
                       max={toMonthInput(monthISO())}
                       onChange={onDetailMonthChange}
                     />
