@@ -3,56 +3,6 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
 import "./auth.css";
 
-// First lockout triggers after 5 failed attempts.
-// Every lockout after that triggers after only 2 more failed attempts.
-const FIRST_ROUND_ATTEMPTS = 5;
-const REPEAT_ROUND_ATTEMPTS = 2;
-
-// Escalating lockout durations — tier 0 is the first lockout, tier 1 the next, etc.
-// Stays at the last value (24h) for any further tier.
-const LOCKOUT_TIERS_MS = [
-  60 * 1000, // 60 seconds
-  60 * 60 * 1000, // 1 hour
-  6 * 60 * 60 * 1000, // 6 hours
-  12 * 60 * 60 * 1000, // 12 hours
-  24 * 60 * 60 * 1000, // 1 day
-];
-
-function attemptsKey(email) {
-  return `login_attempts_${email.trim().toLowerCase()}`;
-}
-
-function readState(email) {
-  try {
-    const raw = localStorage.getItem(attemptsKey(email));
-    if (!raw) return { count: 0, lockedUntil: 0, tier: 0 };
-    const parsed = JSON.parse(raw);
-    return {
-      count: parsed.count || 0,
-      lockedUntil: parsed.lockedUntil || 0,
-      tier: parsed.tier || 0,
-    };
-  } catch {
-    return { count: 0, lockedUntil: 0, tier: 0 };
-  }
-}
-
-function writeState(email, data) {
-  try {
-    localStorage.setItem(attemptsKey(email), JSON.stringify(data));
-  } catch {
-    /* ignore storage errors */
-  }
-}
-
-function clearState(email) {
-  try {
-    localStorage.removeItem(attemptsKey(email));
-  } catch {
-    /* ignore */
-  }
-}
-
 function formatDuration(ms) {
   const s = Math.ceil(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -85,56 +35,26 @@ export default function Login() {
   async function handleSubmit(e) {
     e.preventDefault();
     setError("");
-
-    const state = readState(email);
-
-    if (state.lockedUntil > Date.now()) {
-      setLockedUntil(state.lockedUntil);
-      setError(
-        `Too many failed attempts. Try again in ${formatDuration(state.lockedUntil - Date.now())}.`,
-      );
-      return;
-    }
-
-    // lockout window passed — reset count for this new round, keep tier
-    const activeCount = state.lockedUntil > 0 ? 0 : state.count;
-    const maxAttempts =
-      state.tier === 0 ? FIRST_ROUND_ATTEMPTS : REPEAT_ROUND_ATTEMPTS;
-
     setBusy(true);
     const { error } = await signIn(email, password);
     setBusy(false);
 
     if (error) {
-      const nextCount = activeCount + 1;
-      if (nextCount >= maxAttempts) {
-        const tierIndex = Math.min(state.tier, LOCKOUT_TIERS_MS.length - 1);
-        const duration = LOCKOUT_TIERS_MS[tierIndex];
-        const lockUntil = Date.now() + duration;
-        writeState(email, {
-          count: 0,
-          lockedUntil: lockUntil,
-          tier: state.tier + 1,
-        });
-        setLockedUntil(lockUntil);
+      if (error.status === 429 && error.locked_until) {
+        const until = new Date(error.locked_until).getTime();
+        setLockedUntil(until);
         setError(
-          `Too many failed attempts. Locked for ${formatDuration(duration)}.`,
+          `Too many failed attempts. Try again in ${formatDuration(until - Date.now())}.`,
+        );
+      } else if (error.attempts_left != null) {
+        setError(
+          `${error.message} (${error.attempts_left} attempt${error.attempts_left === 1 ? "" : "s"} left before lockout)`,
         );
       } else {
-        writeState(email, {
-          count: nextCount,
-          lockedUntil: 0,
-          tier: state.tier,
-        });
-        const remaining = maxAttempts - nextCount;
-        setError(
-          `${error.message} (${remaining} attempt${remaining === 1 ? "" : "s"} left before lockout)`,
-        );
+        setError(error.message || "Login failed");
       }
       return;
     }
-
-    clearState(email);
     navigate("/");
   }
 
