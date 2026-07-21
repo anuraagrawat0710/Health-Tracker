@@ -78,8 +78,13 @@
   font-weight: 600;
 }
 
-.auth-btn:hover { background: var(--accent); }
-.auth-btn:disabled { opacity: 0.6; cursor: default; }
+.auth-btn:hover {
+  background: var(--accent);
+}
+.auth-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
 
 .auth-error {
   font-size: 13px;
@@ -89,6 +94,32 @@
   padding: 8px 10px;
 }
 
+.pw-rules {
+  list-style: none;
+  margin: -8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pw-rules li {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.pw-rules .pw-mark {
+  width: 14px;
+  text-align: center;
+  font-weight: 700;
+}
+.pw-rules .pw-ok {
+  color: var(--accent);
+}
+.pw-rules .pw-pending {
+  color: var(--muted);
+}
+
 .auth-foot {
   margin: 22px 0 0;
   font-size: 13px;
@@ -96,4 +127,8 @@
   text-align: center;
 }
 
-.auth-foot a { color: var(--accent); font-weight: 600; text-decoration: none; }
+.auth-foot a {
+  color: var(--accent);
+  font-weight: 600;
+  text-decoration: none;
+}
