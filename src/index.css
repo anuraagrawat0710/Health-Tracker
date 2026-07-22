@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Rubik:wght@500;600;700;800&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700;800&display=swap");
 
 :root {
   --bg: #f3f6fc;
@@ -13,7 +13,7 @@
   --risk: #dc2626;
   --risk-soft: #fee2e2;
 
-  --font-display: "Space Grotesk", sans-serif;
+  --font-display: "Rubik", sans-serif;
   --font-body: "Inter", system-ui, sans-serif;
   --font-mono: "JetBrains Mono", monospace;
 
@@ -52,13 +52,16 @@ button {
   font-family: inherit;
   cursor: pointer;
 }
+
 input,
 select {
   font-family: inherit;
 }
+
 a {
   color: inherit;
 }
+
 .mono {
   font-family: var(--font-mono);
 }
