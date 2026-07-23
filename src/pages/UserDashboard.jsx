@@ -202,6 +202,12 @@ export default function UserDashboard() {
     setMsg("");
     setMsgIsError(false);
 
+    if (selectedDate !== todayISO() && dayLog) {
+      setMsg("This day's log is locked and can no longer be edited.");
+      setMsgIsError(true);
+      return;
+    }
+
     const boundsError = validateBounds(dailyForm, DAILY_BOUNDS, {
       allowEmpty: false,
     });
@@ -324,6 +330,10 @@ export default function UserDashboard() {
 
   const isPastDaily = selectedDate !== todayISO();
   const isPastPeriod = selectedPeriod !== currentPeriod();
+  // Once a day's log is saved, it can only still be edited on the same day —
+  // the next day it locks, matching the database policy that blocks the
+  // update server-side. This is a display hint, not the real enforcement.
+  const isDailyLocked = isPastDaily && !!dayLog;
 
   return (
     <Shell>
@@ -400,8 +410,17 @@ export default function UserDashboard() {
               max={todayISO()}
               onChange={(e) => setSelectedDate(e.target.value)}
             />
-            {isPastDaily && <span className="backfill-tag">Backfilling</span>}
+            {isDailyLocked ? (
+              <span className="backfill-tag">Locked</span>
+            ) : (
+              isPastDaily && <span className="backfill-tag">Backfilling</span>
+            )}
           </h3>
+          {isDailyLocked && (
+            <p className="dash-sub" style={{ margin: "-8px 0 12px" }}>
+              This day's log is already saved and can no longer be edited.
+            </p>
+          )}
           <div className="field-grid">
             <label>
               Steps
@@ -410,6 +429,7 @@ export default function UserDashboard() {
                 min={DAILY_BOUNDS.steps.min}
                 max={DAILY_BOUNDS.steps.max}
                 value={dailyForm.steps}
+                disabled={isDailyLocked}
                 onChange={(e) =>
                   setDailyForm({ ...dailyForm, steps: e.target.value })
                 }
@@ -422,6 +442,7 @@ export default function UserDashboard() {
                 min={DAILY_BOUNDS.exercise_minutes.min}
                 max={DAILY_BOUNDS.exercise_minutes.max}
                 value={dailyForm.exercise_minutes}
+                disabled={isDailyLocked}
                 onChange={(e) =>
                   setDailyForm({
                     ...dailyForm,
@@ -438,6 +459,7 @@ export default function UserDashboard() {
                 max={DAILY_BOUNDS.water_l.max}
                 step="0.1"
                 value={dailyForm.water_l}
+                disabled={isDailyLocked}
                 onChange={(e) =>
                   setDailyForm({ ...dailyForm, water_l: e.target.value })
                 }
@@ -451,16 +473,19 @@ export default function UserDashboard() {
                 max={DAILY_BOUNDS.sleep_hours.max}
                 step="0.1"
                 value={dailyForm.sleep_hours}
+                disabled={isDailyLocked}
                 onChange={(e) =>
                   setDailyForm({ ...dailyForm, sleep_hours: e.target.value })
                 }
               />
             </label>
           </div>
-          <button className="save-btn" disabled={saving}>
-            {dayLog
-              ? `Update log for ${selectedDate}`
-              : `Save log for ${selectedDate}`}
+          <button className="save-btn" disabled={saving || isDailyLocked}>
+            {isDailyLocked
+              ? "Locked"
+              : dayLog
+                ? `Update log for ${selectedDate}`
+                : `Save log for ${selectedDate}`}
           </button>
         </form>
 
