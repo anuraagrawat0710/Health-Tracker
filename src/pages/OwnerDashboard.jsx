@@ -317,7 +317,12 @@ export default function OwnerDashboard() {
   // boxes below "Today's participation". Employees with no checkup yet
   // (risk === null) aren't counted in any box.
   const riskCounts = useMemo(() => {
-    const counts = { Healthy: 0, Moderate: 0, Critical: 0, "High Risk": 0 };
+    const counts = {
+      Healthy: 0,
+      "Moderate Risk": 0,
+      "Critical Risk": 0,
+      "High Risk": 0,
+    };
     rows.forEach((r) => {
       if (r.risk && Object.prototype.hasOwnProperty.call(counts, r.risk)) {
         counts[r.risk] += 1;
@@ -688,8 +693,8 @@ export default function OwnerDashboard() {
               color: "var(--accent)",
               count: rows.length,
             },
-            { key: "Moderate", label: "Moderate", color: "#d97706" },
-            { key: "Critical", label: "Critical", color: "var(--risk)" },
+            { key: "Moderate Risk", label: "Moderate", color: "#d97706" },
+            { key: "Critical Risk", label: "Critical", color: "var(--risk)" },
             { key: "High Risk", label: "At Risk", color: "var(--risk)" },
           ].map((c) => {
             const active = employeeCategory === c.key && c.key !== null;
