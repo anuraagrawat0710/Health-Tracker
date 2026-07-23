@@ -115,6 +115,8 @@ export default function OwnerDashboard() {
   const [participationRange, setParticipationRange] = useState("week");
   const [sendingReminder, setSendingReminder] = useState(false);
   const [sendingThanks, setSendingThanks] = useState(false);
+  const [employeeCategory, setEmployeeCategory] = useState(null);
+  const [showEmployeeList, setShowEmployeeList] = useState(false);
   const [mailNotice, setMailNotice] = useState(null); // { type: 'ok'|'error', text } | null
 
   // Builds participation history for the selected range. "day" bucketing
@@ -229,13 +231,15 @@ export default function OwnerDashboard() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
+    return rows.filter((r) => {
+      const matchesQuery =
+        !q ||
         (r.full_name || "").toLowerCase().includes(q) ||
-        (r.email || "").toLowerCase().includes(q),
-    );
-  }, [rows, query]);
+        (r.email || "").toLowerCase().includes(q);
+      const matchesCategory = !employeeCategory || r.risk === employeeCategory;
+      return matchesQuery && matchesCategory;
+    });
+  }, [rows, query, employeeCategory]);
 
   const todayParticipation = useMemo(() => {
     const logged = rows.filter((r) => r.today_score != null);
@@ -315,6 +319,26 @@ export default function OwnerDashboard() {
     () => rows.filter((r) => r.risk === "High Risk" || r.risk === "Critical"),
     [rows],
   );
+
+  // Count of employees in each risk_category bucket, for the 4 category
+  // boxes below "Today's participation". Employees with no checkup yet
+  // (risk === null) aren't counted in any box.
+  const riskCounts = useMemo(() => {
+    const counts = { Healthy: 0, Moderate: 0, Critical: 0, "High Risk": 0 };
+    rows.forEach((r) => {
+      if (r.risk && Object.prototype.hasOwnProperty.call(counts, r.risk)) {
+        counts[r.risk] += 1;
+      }
+    });
+    return counts;
+  }, [rows]);
+
+  // Clicking a category box filters the "Employees" table below to that
+  // category; clicking the same box again clears the filter.
+  function toggleEmployeeCategory(category) {
+    setEmployeeCategory((prev) => (prev === category ? null : category));
+    setShowEmployeeList(true);
+  }
 
   // Exports the currently filtered/searched employee overview table as a
   // single CSV — same rows the owner is currently looking at.
@@ -657,6 +681,56 @@ export default function OwnerDashboard() {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="card table-card">
+        <div className="table-head">
+          <h3>Employees by category</h3>
+        </div>
+        <div className="stat-row">
+          {[
+            { key: "Healthy", label: "Healthy", color: "var(--accent)" },
+            { key: "Moderate", label: "Moderate", color: "#d97706" },
+            { key: "Critical", label: "Critical", color: "var(--risk)" },
+            { key: "High Risk", label: "At Risk", color: "var(--risk)" },
+          ].map((c) => {
+            const active = employeeCategory === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                className="card stat-card"
+                onClick={() => toggleEmployeeCategory(c.key)}
+                style={{
+                  cursor: "pointer",
+                  textAlign: "left",
+                  font: "inherit",
+                  border: active
+                    ? `2px solid ${c.color}`
+                    : "1px solid var(--line)",
+                }}
+              >
+                <span className="stat-num mono" style={{ color: c.color }}>
+                  {riskCounts[c.key]}
+                </span>
+                <span className="stat-label">{c.label}</span>
+              </button>
+            );
+          })}
+        </div>
+        {employeeCategory && (
+          <p style={{ fontSize: 12, color: "var(--muted)", marginTop: 10 }}>
+            Showing <strong>{employeeCategory}</strong> employees in the table
+            below.{" "}
+            <button
+              type="button"
+              className="today-btn"
+              onClick={() => setEmployeeCategory(null)}
+            >
+              Clear filter
+            </button>
+          </p>
+        )}
       </div>
 
       <div className="card table-card">
