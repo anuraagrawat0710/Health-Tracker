@@ -17,6 +17,17 @@ import "./dashboard.css";
 
 const todayISO = () => new Date().toISOString().slice(0, 10);
 
+// Metrics selectable in the employee detail "trend" graph — pulled straight
+// from daily_logs, plus the computed daily_score. Each has its own y-axis
+// domain since steps/minutes/liters/hours are all on very different scales.
+const TREND_METRICS = [
+  { key: "score", label: "Score", domain: [0, 100] },
+  { key: "steps", label: "Steps", domain: [0, "auto"] },
+  { key: "exercise_minutes", label: "Exercise (min)", domain: [0, "auto"] },
+  { key: "water_l", label: "Water (L)", domain: [0, "auto"] },
+  { key: "sleep_hours", label: "Sleep (hrs)", domain: [0, "auto"] },
+];
+
 // Health checkups now run twice a year on fixed calendar halves:
 // H1 = Jan–Jun, H2 = Jul–Dec. A period is identified by the ISO date of
 // its first day (e.g. "2026-01-01" or "2026-07-01") — this is exactly
@@ -107,6 +118,7 @@ export default function OwnerDashboard() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
   const [detailPeriod, setDetailPeriod] = useState(currentPeriod());
+  const [trendMetric, setTrendMetric] = useState("score");
   const [exporting, setExporting] = useState(false);
   const [exportMode, setExportMode] = useState("full"); // 'full' | 'range'
   const [exportFrom, setExportFrom] = useState("");
@@ -423,7 +435,9 @@ export default function OwnerDashboard() {
     from.setDate(from.getDate() - 29);
     const { data } = await supabase
       .from("daily_logs")
-      .select("log_date, daily_score")
+      .select(
+        "log_date, daily_score, steps, exercise_minutes, water_l, sleep_hours",
+      )
       .eq("user_id", profileId)
       .gte("log_date", from.toISOString().slice(0, 10))
       .order("log_date", { ascending: true });
@@ -431,6 +445,10 @@ export default function OwnerDashboard() {
       date: d.log_date,
       label: d.log_date.slice(5), // MM-DD
       score: d.daily_score != null ? Math.round(d.daily_score) : null,
+      steps: d.steps ?? null,
+      exercise_minutes: d.exercise_minutes ?? null,
+      water_l: d.water_l ?? null,
+      sleep_hours: d.sleep_hours ?? null,
     }));
     setDetail((prev) => (prev ? { ...prev, history } : prev));
   }
@@ -1071,12 +1089,30 @@ export default function OwnerDashboard() {
                 )}
 
                 <div className="modal-section">
-                  <h4>Daily score trend (last 30 days)</h4>
+                  <h4>
+                    Daily log trend (last 30 days)
+                    <span className="range-toggle" style={{ marginLeft: 12 }}>
+                      {TREND_METRICS.map((m) => (
+                        <button
+                          key={m.key}
+                          type="button"
+                          className={trendMetric === m.key ? "active" : ""}
+                          onClick={() => setTrendMetric(m.key)}
+                        >
+                          {m.label}
+                        </button>
+                      ))}
+                    </span>
+                  </h4>
                   {!detail.history ? (
                     <div className="empty-state">Loading trend…</div>
-                  ) : detail.history.every((d) => d.score == null) ? (
+                  ) : detail.history.every((d) => d[trendMetric] == null) ? (
                     <div className="empty-state">
-                      No daily logs in the last 30 days.
+                      No{" "}
+                      {TREND_METRICS.find(
+                        (m) => m.key === trendMetric,
+                      )?.label.toLowerCase()}{" "}
+                      logged in the last 30 days.
                     </div>
                   ) : (
                     <ResponsiveContainer width="100%" height={200}>
@@ -1087,14 +1123,25 @@ export default function OwnerDashboard() {
                           fontSize={11}
                           interval="preserveStartEnd"
                         />
-                        <YAxis fontSize={11} domain={[0, 100]} width={30} />
+                        <YAxis
+                          fontSize={11}
+                          domain={
+                            TREND_METRICS.find((m) => m.key === trendMetric)
+                              ?.domain
+                          }
+                          width={36}
+                        />
                         <Tooltip
-                          formatter={(value) => [value, "Daily score"]}
+                          formatter={(value) => [
+                            value,
+                            TREND_METRICS.find((m) => m.key === trendMetric)
+                              ?.label,
+                          ]}
                           labelFormatter={(label) => `Date: ${label}`}
                         />
                         <Line
                           type="monotone"
-                          dataKey="score"
+                          dataKey={trendMetric}
                           stroke="var(--accent)"
                           strokeWidth={2}
                           dot={false}
