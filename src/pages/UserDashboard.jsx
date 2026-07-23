@@ -197,13 +197,20 @@ export default function UserDashboard() {
     if (profile) loadMonthly(selectedPeriod);
   }, [profile, selectedPeriod]);
 
+  // Once a row exists, it's locked — permanently, regardless of date.
+  // This mirrors the database side: the UPDATE policy has been removed
+  // entirely for daily_logs/monthly_logs, so a second save attempt on an
+  // existing row is rejected by RLS no matter what the client sends.
+  const isDailyLocked = !!dayLog;
+  const isMonthlyLocked = !!monthLog;
+
   async function saveDaily(e) {
     e.preventDefault();
     setMsg("");
     setMsgIsError(false);
 
-    if (selectedDate !== todayISO() && dayLog) {
-      setMsg("This day's log is locked and can no longer be edited.");
+    if (isDailyLocked) {
+      setMsg("This day's log is already saved and can no longer be edited.");
       setMsgIsError(true);
       return;
     }
@@ -242,6 +249,14 @@ export default function UserDashboard() {
     e.preventDefault();
     setMsg("");
     setMsgIsError(false);
+
+    if (isMonthlyLocked) {
+      setMsg(
+        "This period's checkup is already saved and can no longer be edited.",
+      );
+      setMsgIsError(true);
+      return;
+    }
 
     const boundsError = validateBounds(monthlyForm, MONTHLY_BOUNDS, {
       allowEmpty: true,
@@ -330,10 +345,6 @@ export default function UserDashboard() {
 
   const isPastDaily = selectedDate !== todayISO();
   const isPastPeriod = selectedPeriod !== currentPeriod();
-  // Once a day's log is saved, it can only still be edited on the same day —
-  // the next day it locks, matching the database policy that blocks the
-  // update server-side. This is a display hint, not the real enforcement.
-  const isDailyLocked = isPastDaily && !!dayLog;
 
   return (
     <Shell>
@@ -481,11 +492,7 @@ export default function UserDashboard() {
             </label>
           </div>
           <button className="save-btn" disabled={saving || isDailyLocked}>
-            {isDailyLocked
-              ? "Locked"
-              : dayLog
-                ? `Update log for ${selectedDate}`
-                : `Save log for ${selectedDate}`}
+            {isDailyLocked ? "Locked" : `Save log for ${selectedDate}`}
           </button>
         </form>
 
@@ -521,8 +528,18 @@ export default function UserDashboard() {
                 ›
               </button>
             </span>
-            {isPastPeriod && <span className="backfill-tag">Backfilling</span>}
+            {isMonthlyLocked ? (
+              <span className="backfill-tag">Locked</span>
+            ) : (
+              isPastPeriod && <span className="backfill-tag">Backfilling</span>
+            )}
           </h3>
+          {isMonthlyLocked && (
+            <p className="dash-sub" style={{ margin: "-8px 0 12px" }}>
+              This period's checkup is already saved and can no longer be
+              edited.
+            </p>
+          )}
           <div className="field-grid">
             <label>
               BMI
@@ -532,6 +549,7 @@ export default function UserDashboard() {
                 max={MONTHLY_BOUNDS.bmi.max}
                 step="0.1"
                 value={monthlyForm.bmi}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({ ...monthlyForm, bmi: e.target.value })
                 }
@@ -544,6 +562,7 @@ export default function UserDashboard() {
                 min={MONTHLY_BOUNDS.systolic_bp.min}
                 max={MONTHLY_BOUNDS.systolic_bp.max}
                 value={monthlyForm.systolic_bp}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({
                     ...monthlyForm,
@@ -559,6 +578,7 @@ export default function UserDashboard() {
                 min={MONTHLY_BOUNDS.diastolic_bp.min}
                 max={MONTHLY_BOUNDS.diastolic_bp.max}
                 value={monthlyForm.diastolic_bp}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({
                     ...monthlyForm,
@@ -574,6 +594,7 @@ export default function UserDashboard() {
                 min={MONTHLY_BOUNDS.sugar.min}
                 max={MONTHLY_BOUNDS.sugar.max}
                 value={monthlyForm.sugar}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({ ...monthlyForm, sugar: e.target.value })
                 }
@@ -586,6 +607,7 @@ export default function UserDashboard() {
                 min={MONTHLY_BOUNDS.cholesterol.min}
                 max={MONTHLY_BOUNDS.cholesterol.max}
                 value={monthlyForm.cholesterol}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({
                     ...monthlyForm,
@@ -600,6 +622,7 @@ export default function UserDashboard() {
               <input
                 type="checkbox"
                 checked={monthlyForm.wellness_activity}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({
                     ...monthlyForm,
@@ -613,6 +636,7 @@ export default function UserDashboard() {
               <input
                 type="checkbox"
                 checked={monthlyForm.health_check}
+                disabled={isMonthlyLocked}
                 onChange={(e) =>
                   setMonthlyForm({
                     ...monthlyForm,
@@ -623,9 +647,9 @@ export default function UserDashboard() {
               Completed health check
             </label>
           </div>
-          <button className="save-btn" disabled={saving}>
-            {monthLog
-              ? `Update checkup for ${periodLabel(selectedPeriod)}`
+          <button className="save-btn" disabled={saving || isMonthlyLocked}>
+            {isMonthlyLocked
+              ? "Locked"
               : `Save checkup for ${periodLabel(selectedPeriod)}`}
           </button>
         </form>
