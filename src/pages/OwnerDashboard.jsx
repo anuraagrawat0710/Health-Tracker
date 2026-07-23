@@ -309,6 +309,13 @@ export default function OwnerDashboard() {
     return { total: rows.length, loggedToday, atRisk, avg };
   }, [rows]);
 
+  // Full row data (not just the count) for employees currently flagged
+  // High Risk / Critical — same criteria as the "At risk" stat card above.
+  const atRiskList = useMemo(
+    () => rows.filter((r) => r.risk === "High Risk" || r.risk === "Critical"),
+    [rows],
+  );
+
   // Exports the currently filtered/searched employee overview table as a
   // single CSV — same rows the owner is currently looking at.
   function exportEmployeesCSV() {
@@ -643,6 +650,60 @@ export default function OwnerDashboard() {
               <div className="empty-state">Everyone has logged today.</div>
             ) : (
               todayParticipation.notLogged.map((r) => (
+                <div key={r.id} className="name-row">
+                  <span>{r.full_name || r.email}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card table-card">
+        <div className="grid-2">
+          <div>
+            <h4
+              style={{
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--risk)",
+                marginBottom: 10,
+              }}
+            >
+              At risk ({atRiskList.length})
+            </h4>
+            {atRiskList.length === 0 ? (
+              <div className="empty-state">No employees currently at risk.</div>
+            ) : (
+              atRiskList.map((r) => (
+                <div key={r.id} className="name-row">
+                  <span>{r.full_name || r.email}</span>
+                  <span
+                    className={`risk-tag risk-${r.risk.split(" ")[0].toLowerCase()}`}
+                  >
+                    {r.risk}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+          <div>
+            <h4
+              style={{
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--accent)",
+                marginBottom: 10,
+              }}
+            >
+              All employees ({rows.length})
+            </h4>
+            {rows.length === 0 ? (
+              <div className="empty-state">No employees yet.</div>
+            ) : (
+              rows.map((r) => (
                 <div key={r.id} className="name-row">
                   <span>{r.full_name || r.email}</span>
                 </div>
