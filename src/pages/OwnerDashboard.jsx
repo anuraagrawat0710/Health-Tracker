@@ -689,18 +689,28 @@ export default function OwnerDashboard() {
         </div>
         <div className="stat-row">
           {[
-            { key: "Healthy", label: "Healthy", color: "var(--accent)" },
+            {
+              key: null,
+              label: "Total users",
+              color: "var(--accent)",
+              count: rows.length,
+            },
             { key: "Moderate", label: "Moderate", color: "#d97706" },
             { key: "Critical", label: "Critical", color: "var(--risk)" },
             { key: "High Risk", label: "At Risk", color: "var(--risk)" },
           ].map((c) => {
-            const active = employeeCategory === c.key;
+            const active = employeeCategory === c.key && c.key !== null;
+            const count = c.count ?? riskCounts[c.key];
             return (
               <button
-                key={c.key}
+                key={c.label}
                 type="button"
                 className="card stat-card"
-                onClick={() => toggleEmployeeCategory(c.key)}
+                onClick={() =>
+                  c.key === null
+                    ? setEmployeeCategory(null)
+                    : toggleEmployeeCategory(c.key)
+                }
                 style={{
                   cursor: "pointer",
                   textAlign: "left",
@@ -711,7 +721,7 @@ export default function OwnerDashboard() {
                 }}
               >
                 <span className="stat-num mono" style={{ color: c.color }}>
-                  {riskCounts[c.key]}
+                  {count}
                 </span>
                 <span className="stat-label">{c.label}</span>
               </button>
