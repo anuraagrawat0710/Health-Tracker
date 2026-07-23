@@ -1,4 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
+  CartesianGrid,
+} from "recharts";
 import { supabase } from "../lib/supabaseClient";
 import Shell from "../components/Shell";
 import "./dashboard.css";
@@ -31,6 +41,9 @@ const prevPeriod = (firstDay) => {
   const half = firstDay.slice(5, 7);
   return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
 };
+
+// How many days of participation history to chart on the owner dashboard.
+const PARTICIPATION_DAYS = 14;
 
 // Turns an array of flat objects into CSV lines (header row + data rows).
 // Values containing a comma, quote, or newline get quoted and any internal
@@ -91,6 +104,46 @@ export default function OwnerDashboard() {
   const [exportMode, setExportMode] = useState("full"); // 'full' | 'range'
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState(todayISO());
+  const [participationHistory, setParticipationHistory] = useState([]);
+  const [participationLoading, setParticipationLoading] = useState(true);
+
+  // Builds a day-by-day count of how many employees logged vs didn't log,
+  // over the last PARTICIPATION_DAYS days. Only needs daily_logs (already
+  // readable by owners via RLS) plus the total employee count.
+  async function loadParticipationHistory(totalEmployees) {
+    setParticipationLoading(true);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - (PARTICIPATION_DAYS - 1));
+    const cutoffISO = cutoff.toISOString().slice(0, 10);
+
+    const { data } = await supabase
+      .from("daily_logs")
+      .select("user_id, log_date")
+      .gte("log_date", cutoffISO)
+      .lte("log_date", todayISO());
+
+    const loggedByDate = {};
+    (data || []).forEach((r) => {
+      if (!loggedByDate[r.log_date]) loggedByDate[r.log_date] = new Set();
+      loggedByDate[r.log_date].add(r.user_id);
+    });
+
+    const days = [];
+    for (let i = PARTICIPATION_DAYS - 1; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const iso = d.toISOString().slice(0, 10);
+      const participated = loggedByDate[iso] ? loggedByDate[iso].size : 0;
+      days.push({
+        date: iso,
+        label: iso.slice(5),
+        Logged: participated,
+        "Not logged": Math.max(totalEmployees - participated, 0),
+      });
+    }
+    setParticipationHistory(days);
+    setParticipationLoading(false);
+  }
 
   useEffect(() => {
     async function load() {
@@ -126,6 +179,7 @@ export default function OwnerDashboard() {
       }));
       setRows(merged);
       setLoading(false);
+      loadParticipationHistory(merged.length);
     }
     load();
   }, []);
@@ -346,6 +400,50 @@ export default function OwnerDashboard() {
           </span>
           <span className="stat-label">At risk</span>
         </div>
+      </div>
+
+      <div className="card chart-card">
+        <div className="chart-head">
+          <h3>Daily log participation</h3>
+        </div>
+        {participationLoading ? (
+          <div className="empty-state">Loading…</div>
+        ) : stats.total === 0 ? (
+          <div className="empty-state">No employees yet.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={participationHistory}>
+              <CartesianGrid stroke="var(--line)" vertical={false} />
+              <XAxis dataKey="label" fontSize={11} stroke="var(--muted)" />
+              <YAxis
+                fontSize={11}
+                stroke="var(--muted)"
+                width={30}
+                allowDecimals={false}
+              />
+              <Tooltip
+                contentStyle={{
+                  borderRadius: 8,
+                  border: "1px solid var(--line)",
+                  fontSize: 12,
+                }}
+              />
+              <Legend wrapperStyle={{ fontSize: 12 }} />
+              <Bar
+                dataKey="Logged"
+                stackId="participation"
+                fill="var(--accent)"
+                radius={[0, 0, 0, 0]}
+              />
+              <Bar
+                dataKey="Not logged"
+                stackId="participation"
+                fill="var(--risk)"
+                radius={[4, 4, 0, 0]}
+              />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
       </div>
 
       <div className="card table-card">
