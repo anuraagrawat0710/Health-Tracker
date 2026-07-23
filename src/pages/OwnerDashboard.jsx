@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import {
   BarChart,
   Bar,
+  LineChart,
+  Line,
   XAxis,
   YAxis,
   Tooltip,
@@ -414,6 +416,25 @@ export default function OwnerDashboard() {
     setDetail((prev) => (prev ? { ...prev, monthly, summary } : prev));
   }
 
+  // Fetch the last 30 days of daily scores for the trend graph in the
+  // employee detail modal.
+  async function loadDetailHistory(profileId) {
+    const from = new Date();
+    from.setDate(from.getDate() - 29);
+    const { data } = await supabase
+      .from("daily_logs")
+      .select("log_date, daily_score")
+      .eq("user_id", profileId)
+      .gte("log_date", from.toISOString().slice(0, 10))
+      .order("log_date", { ascending: true });
+    const history = (data || []).map((d) => ({
+      date: d.log_date,
+      label: d.log_date.slice(5), // MM-DD
+      score: d.daily_score != null ? Math.round(d.daily_score) : null,
+    }));
+    setDetail((prev) => (prev ? { ...prev, history } : prev));
+  }
+
   async function openDetail(profile) {
     const initDate = todayISO();
     const initPeriod = currentPeriod();
@@ -423,7 +444,13 @@ export default function OwnerDashboard() {
     setExportFrom("");
     setExportTo(todayISO());
     setDetailLoading(true);
-    setDetail({ profile, daily: null, monthly: null, summary: null });
+    setDetail({
+      profile,
+      daily: null,
+      monthly: null,
+      summary: null,
+      history: null,
+    });
 
     const [{ data: daily }, { data: monthly }, { data: summary }] =
       await Promise.all([
@@ -446,8 +473,9 @@ export default function OwnerDashboard() {
           .eq("log_month", initPeriod)
           .maybeSingle(),
       ]);
-    setDetail({ profile, daily, monthly, summary });
+    setDetail({ profile, daily, monthly, summary, history: null });
     setDetailLoading(false);
+    loadDetailHistory(profile.id);
   }
 
   function closeDetail() {
@@ -1041,6 +1069,41 @@ export default function OwnerDashboard() {
                     </div>
                   </div>
                 )}
+
+                <div className="modal-section">
+                  <h4>Daily score trend (last 30 days)</h4>
+                  {!detail.history ? (
+                    <div className="empty-state">Loading trend…</div>
+                  ) : detail.history.every((d) => d.score == null) ? (
+                    <div className="empty-state">
+                      No daily logs in the last 30 days.
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height={200}>
+                      <LineChart data={detail.history}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                        <XAxis
+                          dataKey="label"
+                          fontSize={11}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis fontSize={11} domain={[0, 100]} width={30} />
+                        <Tooltip
+                          formatter={(value) => [value, "Daily score"]}
+                          labelFormatter={(label) => `Date: ${label}`}
+                        />
+                        <Line
+                          type="monotone"
+                          dataKey="score"
+                          stroke="var(--accent)"
+                          strokeWidth={2}
+                          dot={false}
+                          connectNulls
+                        />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
               </div>
             )}
           </div>
