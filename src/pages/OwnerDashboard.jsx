@@ -687,7 +687,7 @@ export default function OwnerDashboard() {
         <div className="table-head">
           <h3>Employees by category</h3>
         </div>
-        <div className="stat-row">
+        <div className="category-row">
           {[
             {
               key: null,
@@ -695,9 +695,10 @@ export default function OwnerDashboard() {
               color: "var(--accent)",
               count: rows.length,
             },
+            { key: "Healthy", label: "Healthy", color: "var(--accent)" },
             { key: "Moderate", label: "Moderate", color: "#d97706" },
-            { key: "Critical", label: "Critical", color: "var(--risk)" },
             { key: "High Risk", label: "High Risk", color: "var(--risk)" },
+            { key: "Critical", label: "Critical", color: "var(--risk)" },
           ].map((c) => {
             const active = employeeCategory === c.key && c.key !== null;
             const count = c.count ?? riskCounts[c.key];
