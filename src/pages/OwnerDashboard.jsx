@@ -697,7 +697,7 @@ export default function OwnerDashboard() {
             },
             { key: "Moderate", label: "Moderate", color: "#d97706" },
             { key: "Critical", label: "Critical", color: "var(--risk)" },
-            { key: "High Risk", label: "At Risk", color: "var(--risk)" },
+            { key: "High Risk", label: "High Risk", color: "var(--risk)" },
           ].map((c) => {
             const active = employeeCategory === c.key && c.key !== null;
             const count = c.count ?? riskCounts[c.key];
