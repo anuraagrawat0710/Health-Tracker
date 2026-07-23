@@ -422,13 +422,19 @@ export default function UserDashboard() {
               onChange={(e) => setSelectedDate(e.target.value)}
             />
             {isDailyLocked ? (
-              <span className="backfill-tag">Locked</span>
+              <span className="backfill-tag" style={{ marginLeft: 12 }}>
+                Locked
+              </span>
             ) : (
-              isPastDaily && <span className="backfill-tag">Backfilling</span>
+              isPastDaily && (
+                <span className="backfill-tag" style={{ marginLeft: 12 }}>
+                  Backfilling
+                </span>
+              )
             )}
           </h3>
           {isDailyLocked && (
-            <p className="dash-sub" style={{ margin: "-8px 0 12px" }}>
+            <p className="dash-sub" style={{ margin: "4px 0 16px" }}>
               This day's log is already saved and can no longer be edited.
             </p>
           )}
@@ -529,13 +535,19 @@ export default function UserDashboard() {
               </button>
             </span>
             {isMonthlyLocked ? (
-              <span className="backfill-tag">Locked</span>
+              <span className="backfill-tag" style={{ marginLeft: 12 }}>
+                Locked
+              </span>
             ) : (
-              isPastPeriod && <span className="backfill-tag">Backfilling</span>
+              isPastPeriod && (
+                <span className="backfill-tag" style={{ marginLeft: 12 }}>
+                  Backfilling
+                </span>
+              )
             )}
           </h3>
           {isMonthlyLocked && (
-            <p className="dash-sub" style={{ margin: "-8px 0 12px" }}>
+            <p className="dash-sub" style={{ margin: "4px 0 16px" }}>
               This period's checkup is already saved and can no longer be
               edited.
             </p>
