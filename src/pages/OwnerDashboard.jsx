@@ -42,8 +42,14 @@ const prevPeriod = (firstDay) => {
   return half === "07" ? `${year}-01-01` : `${year - 1}-07-01`;
 };
 
-// How many days of participation history to chart on the owner dashboard.
-const PARTICIPATION_DAYS = 14;
+// Ranges for the participation chart, same shape as the user dashboard's
+// score trend toggle. "week" and "month" show one bar per day; "year"
+// buckets into one bar per month (365 daily bars would be unreadable).
+const PARTICIPATION_RANGES = {
+  week: { days: 7, bucket: "day" },
+  month: { days: 30, bucket: "day" },
+  year: { days: 365, bucket: "month" },
+};
 
 // Turns an array of flat objects into CSV lines (header row + data rows).
 // Values containing a comma, quote, or newline get quoted and any internal
@@ -106,14 +112,18 @@ export default function OwnerDashboard() {
   const [exportTo, setExportTo] = useState(todayISO());
   const [participationHistory, setParticipationHistory] = useState([]);
   const [participationLoading, setParticipationLoading] = useState(true);
+  const [participationRange, setParticipationRange] = useState("week");
 
-  // Builds a day-by-day count of how many employees logged vs didn't log,
-  // over the last PARTICIPATION_DAYS days. Only needs daily_logs (already
-  // readable by owners via RLS) plus the total employee count.
-  async function loadParticipationHistory(totalEmployees) {
+  // Builds participation history for the selected range. "day" bucketing
+  // gives one bar per calendar day (week/month view); "month" bucketing
+  // averages logged-vs-not across each calendar month (year view), using
+  // each month's actual day count rather than assuming totalEmployees
+  // stayed constant over the whole span.
+  async function loadParticipationHistory(totalEmployees, range) {
     setParticipationLoading(true);
+    const { days, bucket } = PARTICIPATION_RANGES[range];
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - (PARTICIPATION_DAYS - 1));
+    cutoff.setDate(cutoff.getDate() - (days - 1));
     const cutoffISO = cutoff.toISOString().slice(0, 10);
 
     const { data } = await supabase
@@ -128,20 +138,47 @@ export default function OwnerDashboard() {
       loggedByDate[r.log_date].add(r.user_id);
     });
 
-    const days = [];
-    for (let i = PARTICIPATION_DAYS - 1; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const iso = d.toISOString().slice(0, 10);
-      const participated = loggedByDate[iso] ? loggedByDate[iso].size : 0;
-      days.push({
-        date: iso,
-        label: iso.slice(5),
-        Logged: participated,
-        "Not logged": Math.max(totalEmployees - participated, 0),
-      });
+    if (bucket === "day") {
+      const result = [];
+      for (let i = days - 1; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        const participated = loggedByDate[iso] ? loggedByDate[iso].size : 0;
+        result.push({
+          label: iso.slice(5),
+          Logged: participated,
+          "Not logged": Math.max(totalEmployees - participated, 0),
+        });
+      }
+      setParticipationHistory(result);
+      setParticipationLoading(false);
+      return;
     }
-    setParticipationHistory(days);
+
+    // Monthly buckets: average the daily participation rate across each
+    // month, so a partial current month isn't skewed by unfilled future days.
+    const monthBuckets = {};
+    Object.entries(loggedByDate).forEach(([iso, userSet]) => {
+      const key = iso.slice(0, 7);
+      if (!monthBuckets[key]) monthBuckets[key] = [];
+      monthBuckets[key].push(userSet.size);
+    });
+    const sortedKeys = Object.keys(monthBuckets).sort();
+    const result = sortedKeys.map((key) => {
+      const vals = monthBuckets[key];
+      const avgLogged =
+        Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10;
+      return {
+        label: key,
+        Logged: avgLogged,
+        "Not logged": Math.max(
+          Math.round((totalEmployees - avgLogged) * 10) / 10,
+          0,
+        ),
+      };
+    });
+    setParticipationHistory(result);
     setParticipationLoading(false);
   }
 
@@ -179,10 +216,13 @@ export default function OwnerDashboard() {
       }));
       setRows(merged);
       setLoading(false);
-      loadParticipationHistory(merged.length);
     }
     load();
   }, []);
+
+  useEffect(() => {
+    if (!loading) loadParticipationHistory(rows.length, participationRange);
+  }, [participationRange, loading, rows.length]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -405,6 +445,18 @@ export default function OwnerDashboard() {
       <div className="card chart-card">
         <div className="chart-head">
           <h3>Daily log participation</h3>
+          <div className="range-toggle">
+            {["week", "month", "year"].map((r) => (
+              <button
+                key={r}
+                className={participationRange === r ? "active" : ""}
+                onClick={() => setParticipationRange(r)}
+                type="button"
+              >
+                {r}
+              </button>
+            ))}
+          </div>
         </div>
         {participationLoading ? (
           <div className="empty-state">Loading…</div>
