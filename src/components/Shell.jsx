@@ -15,7 +15,7 @@ export default function Shell({ children }) {
               {profile?.full_name || profile?.email}
             </span>
             <span className="shell-user-role">
-              {profile?.role === "owner" ? "Owner" : "Employee"}
+              {profile?.role === "owner" ? "Owner" : "User"}
             </span>
           </div>
           <Link to="/security" className="shell-signout">
