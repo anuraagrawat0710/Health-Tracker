@@ -41,7 +41,7 @@
   background: var(--accent-soft);
   color: var(--accent);
 }
-.risk-tag.risk-low {
+.risk-tag.risk-healthy {
   background: var(--accent-soft);
   color: var(--accent);
 }
