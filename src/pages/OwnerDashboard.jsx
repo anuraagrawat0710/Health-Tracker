@@ -705,7 +705,9 @@ export default function OwnerDashboard() {
                 key={c.label}
                 type="button"
                 className="card stat-card"
-                onClick={() => setCategoryModal(c)}
+                onClick={() =>
+                  setCategoryModal((prev) => (prev?.key === c.key ? null : c))
+                }
                 style={{
                   cursor: "pointer",
                   textAlign: "left",
@@ -723,6 +725,70 @@ export default function OwnerDashboard() {
             );
           })}
         </div>
+
+        {categoryModal && (
+          <div className="category-expand">
+            <div className="table-head" style={{ marginBottom: 10 }}>
+              <h3>{categoryModal.label}</h3>
+              <span className="emp-email">
+                {categoryEmployees.length}{" "}
+                {categoryEmployees.length === 1 ? "employee" : "employees"}
+              </span>
+              <button
+                type="button"
+                className="view-btn"
+                onClick={() => setCategoryModal(null)}
+              >
+                Hide
+              </button>
+            </div>
+            {categoryEmployees.length === 0 ? (
+              <div className="empty-state">No employees in this category.</div>
+            ) : (
+              categoryEmployees.map((r) => (
+                <div
+                  key={r.id}
+                  className="name-row"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                  }}
+                >
+                  <div>
+                    <div className="emp-name">{r.full_name || "—"}</div>
+                    <div className="emp-email">{r.email}</div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    {r.risk ? (
+                      <span
+                        className={`risk-tag risk-${r.risk.split(" ")[0].toLowerCase()}`}
+                      >
+                        {r.risk}
+                      </span>
+                    ) : (
+                      <span className="risk-tag">No data</span>
+                    )}
+                    <button
+                      type="button"
+                      className="view-btn"
+                      onClick={() => openDetail(r)}
+                    >
+                      View
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        )}
       </div>
 
       <div className="card table-card">
@@ -796,80 +862,6 @@ export default function OwnerDashboard() {
           </table>
         )}
       </div>
-
-      {categoryModal && (
-        <div className="modal-backdrop" onClick={() => setCategoryModal(null)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-head">
-              <div>
-                <h3>{categoryModal.label}</h3>
-                <div className="emp-email">
-                  {categoryEmployees.length}{" "}
-                  {categoryEmployees.length === 1 ? "employee" : "employees"}
-                </div>
-              </div>
-              <button
-                className="modal-close"
-                onClick={() => setCategoryModal(null)}
-              >
-                ×
-              </button>
-            </div>
-            <div className="modal-body">
-              {categoryEmployees.length === 0 ? (
-                <div className="empty-state">
-                  No employees in this category.
-                </div>
-              ) : (
-                categoryEmployees.map((r) => (
-                  <div
-                    key={r.id}
-                    className="name-row"
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      gap: 10,
-                    }}
-                  >
-                    <div>
-                      <div className="emp-name">{r.full_name || "—"}</div>
-                      <div className="emp-email">{r.email}</div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                      }}
-                    >
-                      {r.risk ? (
-                        <span
-                          className={`risk-tag risk-${r.risk.split(" ")[0].toLowerCase()}`}
-                        >
-                          {r.risk}
-                        </span>
-                      ) : (
-                        <span className="risk-tag">No data</span>
-                      )}
-                      <button
-                        type="button"
-                        className="view-btn"
-                        onClick={() => {
-                          setCategoryModal(null);
-                          openDetail(r);
-                        }}
-                      >
-                        View
-                      </button>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      )}
 
       {detail && (
         <div className="modal-backdrop" onClick={closeDetail}>

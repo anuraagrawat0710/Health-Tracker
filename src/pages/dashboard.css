@@ -265,6 +265,14 @@
   }
 }
 
+/* Inline panel that expands below the category boxes when one is clicked
+   (replaces the old popup modal for this section). */
+.category-expand {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
 .table-card {
   padding: 20px 22px;
 }
