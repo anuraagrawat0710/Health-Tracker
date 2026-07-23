@@ -234,6 +234,12 @@ export default function OwnerDashboard() {
     );
   }, [rows, query]);
 
+  const todayParticipation = useMemo(() => {
+    const logged = rows.filter((r) => r.today_score != null);
+    const notLogged = rows.filter((r) => r.today_score == null);
+    return { logged, notLogged };
+  }, [rows]);
+
   const stats = useMemo(() => {
     const loggedToday = rows.filter((r) => r.today_score != null).length;
     const atRisk = rows.filter(
@@ -496,6 +502,58 @@ export default function OwnerDashboard() {
             </BarChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      <div className="card table-card">
+        <div className="table-head">
+          <h3>Today's participation</h3>
+        </div>
+        <div className="grid-2">
+          <div>
+            <h4
+              style={{
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--accent)",
+                marginBottom: 10,
+              }}
+            >
+              Logged ({todayParticipation.logged.length})
+            </h4>
+            {todayParticipation.logged.length === 0 ? (
+              <div className="empty-state">No one has logged yet today.</div>
+            ) : (
+              todayParticipation.logged.map((r) => (
+                <div key={r.id} className="name-row">
+                  <span>{r.full_name || r.email}</span>
+                </div>
+              ))
+            )}
+          </div>
+          <div>
+            <h4
+              style={{
+                fontSize: 13,
+                textTransform: "uppercase",
+                letterSpacing: "0.04em",
+                color: "var(--risk)",
+                marginBottom: 10,
+              }}
+            >
+              Not logged ({todayParticipation.notLogged.length})
+            </h4>
+            {todayParticipation.notLogged.length === 0 ? (
+              <div className="empty-state">Everyone has logged today.</div>
+            ) : (
+              todayParticipation.notLogged.map((r) => (
+                <div key={r.id} className="name-row">
+                  <span>{r.full_name || r.email}</span>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
 
       <div className="card table-card">

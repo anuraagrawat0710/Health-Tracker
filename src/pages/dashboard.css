@@ -401,3 +401,13 @@
   background: var(--risk-soft);
   color: var(--risk);
 }
+
+.name-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--ink);
+}
+.name-row:last-child {
+  border-bottom: none;
+}
