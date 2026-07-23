@@ -101,7 +101,6 @@ function downloadMultiSectionCSV(filename, sections) {
 export default function OwnerDashboard() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
   const [detail, setDetail] = useState(null); // { profile, daily, monthly, summary } | null
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailDate, setDetailDate] = useState(todayISO());
@@ -228,16 +227,6 @@ export default function OwnerDashboard() {
     if (!loading) loadParticipationHistory(rows.length, participationRange);
   }, [participationRange, loading, rows.length]);
 
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return rows;
-    return rows.filter(
-      (r) =>
-        (r.full_name || "").toLowerCase().includes(q) ||
-        (r.email || "").toLowerCase().includes(q),
-    );
-  }, [rows, query]);
-
   const todayParticipation = useMemo(() => {
     const logged = rows.filter((r) => r.today_score != null);
     const notLogged = rows.filter((r) => r.today_score == null);
@@ -337,19 +326,6 @@ export default function OwnerDashboard() {
     if (categoryModal.key === "ALL") return rows;
     return rows.filter((r) => r.risk === categoryModal.key);
   }, [rows, categoryModal]);
-
-  // Exports the currently filtered/searched employee overview table as a
-  // single CSV — same rows the owner is currently looking at.
-  function exportEmployeesCSV() {
-    const data = filtered.map((r) => ({
-      name: r.full_name || "",
-      email: r.email,
-      today_score: r.today_score ?? "",
-      checkup_score: r.monthly_score ?? "",
-      risk_category: r.risk ?? "",
-    }));
-    downloadCSV(`employees-overview-${todayISO()}.csv`, data);
-  }
 
   // Exports one employee's daily logs AND half-yearly checkups together in
   // a single CSV, either across their full history or restricted to a
@@ -788,78 +764,6 @@ export default function OwnerDashboard() {
               ))
             )}
           </div>
-        )}
-      </div>
-
-      <div className="card table-card">
-        <div className="table-head">
-          <h3>Employees</h3>
-          <input
-            className="search-input"
-            placeholder="Search name, email…"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-          <button
-            type="button"
-            className="view-btn"
-            onClick={exportEmployeesCSV}
-            disabled={filtered.length === 0}
-          >
-            Export CSV
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="empty-state">Loading…</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state">No employees match.</div>
-        ) : (
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Today's score</th>
-                <th>Checkup score</th>
-                <th>Risk</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((r) => (
-                <tr key={r.id}>
-                  <td>
-                    <div className="emp-name">{r.full_name || "—"}</div>
-                    <div className="emp-email">{r.email}</div>
-                  </td>
-                  <td className="mono">
-                    {r.today_score != null ? Math.round(r.today_score) : "—"}
-                  </td>
-                  <td className="mono">
-                    {r.monthly_score != null
-                      ? Math.round(r.monthly_score)
-                      : "—"}
-                  </td>
-                  <td>
-                    {r.risk ? (
-                      <span
-                        className={`risk-tag risk-${r.risk.split(" ")[0].toLowerCase()}`}
-                      >
-                        {r.risk}
-                      </span>
-                    ) : (
-                      <span className="risk-tag">No data</span>
-                    )}
-                  </td>
-                  <td>
-                    <button className="view-btn" onClick={() => openDetail(r)}>
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         )}
       </div>
 
